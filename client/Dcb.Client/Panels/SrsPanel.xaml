@@ -1,0 +1,44 @@
+<UserControl x:Class="Dcb.Client.Panels.SrsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="8">
+            <DockPanel>
+                <Button x:Name="StartAppButton" DockPanel.Dock="Right" Content="Start SRS app" Padding="8,1" Click="StartApp_Click"
+                        ToolTip="Start your SRS client; click Connect in its window (External AWACS Mode) once"/>
+                <StackPanel>
+                    <TextBlock x:Name="ListenStatusText" TextWrapping="Wrap" FontWeight="SemiBold"/>
+                    <TextBlock x:Name="AppStatusText" TextWrapping="Wrap" Foreground="{DynamicResource Dcb.TextDim}"/>
+                    <TextBlock x:Name="CommandText" TextWrapping="Wrap" Foreground="{DynamicResource Dcb.TextDim}"/>
+                </StackPanel>
+            </DockPanel>
+
+            <GroupBox Header="Your radio position (SRS range and line of sight)" Padding="6" Margin="0,8,0,0">
+                <StackPanel>
+                    <!-- One group: the two sit in different panels, which would make them independent. -->
+                    <RadioButton x:Name="PositionAtc" GroupName="Position" Content="The airfield picked in the ATC tab" Checked="Position_Checked"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                        <RadioButton x:Name="PositionFixed" GroupName="Position" Content="Fixed point" VerticalAlignment="Center" Checked="Position_Checked"/>
+                        <TextBlock x:Name="FixedText" VerticalAlignment="Center" Margin="8,0" Foreground="{DynamicResource Dcb.TextDim}"/>
+                        <Button Content="Set to map centre" Click="SetFixed_Click" Padding="6,1"/>
+                    </StackPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Your channels (6 ATC, 7–10 packages)" Padding="6" Margin="0,8,0,0">
+                <StackPanel x:Name="ChannelRows"/>
+            </GroupBox>
+
+            <GroupBox x:Name="ListenBox" Padding="6" Margin="0,8,0,0" Header="Listen traffic">
+                <StackPanel>
+                    <DockPanel>
+                        <Button x:Name="StopListenButton" DockPanel.Dock="Right" Content="Stop" Padding="8,0" Click="StopListen_Click"/>
+                        <TextBlock x:Name="ListenText" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="{DynamicResource Dcb.TextDim}"
+                                   Text="Right-click a player's aircraft on a map or in Objects → Listen traffic."/>
+                    </DockPanel>
+                    <StackPanel x:Name="ListenRows" Margin="0,4,0,0"/>
+                </StackPanel>
+            </GroupBox>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

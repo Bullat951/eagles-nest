@@ -1,0 +1,20 @@
+{
+  "_comment": "Diagram ICAO code (as OCR reads it) -> DCS airfield name, for pages whose title does not match the DCS name. Per theatre.",
+  "Syria": {
+    "LTAJ": "Gaziantep",
+    "OS65": "Shayrat",
+    "OSPR": "Palmyra",
+    "OS60": "Tha'lah",
+    "OJMF": "King Hussein Air College",
+    "OJHR": "H4",
+    "AG1080": "Pinarbashi",
+    "AGU85": "Marj as Sultan North",
+    "AG4485": "Marj as Sultan North",
+    "AGU86": "Marj as Sultan South",
+    "AG4486": "Marj as Sultan South",
+    "AGU87": "Qabr as Sitt",
+    "AG4487": "Qabr as Sitt",
+    "LCU": "Akrotiri",
+    "LCRA": "Akrotiri"
+  }
+}

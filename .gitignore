@@ -1,0 +1,24 @@
+bin/
+obj/
+build/
+.vs/
+*.user
+*.miz.bak
+
+client/**/bin/
+client/**/obj/
+dll/build/
+_downloads/
+# user-provided map data (local only, large)
+/*.zip
+# third-party airfield diagrams (local only)
+Diagrams/
+# single build output (build.ps1)
+app/
+/Dcb.Client.exe
+
+# release packages (server\package.ps1)
+/release/
+
+# real server settings (controller passwords): only DCB.example.lua is in the repository
+server/config/DCB.lua

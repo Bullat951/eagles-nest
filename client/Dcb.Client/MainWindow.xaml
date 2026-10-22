@@ -1,0 +1,57 @@
+﻿<Window x:Class="Dcb.Client.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ad="https://github.com/Dirkster99/AvalonDock"
+        Title="Eagle's Nest — DCS ATC/GCI" Height="800" Width="1400">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_Connection">
+                <MenuItem Header="_Connect…" Click="Connect_Click"/>
+                <MenuItem Header="_Disconnect" Click="Disconnect_Click"/>
+            </MenuItem>
+            <MenuItem Header="_Window">
+                <MenuItem Header="New _window">
+                    <MenuItem Header="_GCI (map, objects, zones)" Click="NewGciWindow_Click"/>
+                    <MenuItem Header="_ATC (ATC, SRS, DCS map)" Click="NewAtcWindow_Click"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="New _map" Click="NewMap_Click"/>
+                <MenuItem Header="_Objects" Click="ShowObjects_Click"/>
+                <MenuItem Header="_Zones (Foothold)" Click="ShowZones_Click"/>
+                <MenuItem Header="_SRS" Click="ShowSrs_Click"/>
+                <MenuItem Header="_ATC" Click="ShowAtc_Click"/>
+                <MenuItem Header="_Packages" Click="ShowPackages_Click"/>
+                <MenuItem Header="ATC _views">
+                    <MenuItem Header="_Diagram" Tag="view:diagram" Click="ShowAtcView_Click"/>
+                    <MenuItem Header="_Approach" Tag="view:approach" Click="ShowAtcView_Click"/>
+                    <MenuItem Header="_Carrier" Tag="view:carrier" Click="ShowAtcView_Click"/>
+                    <MenuItem Header="_LSO" Tag="view:lso" Click="ShowAtcView_Click"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Save layout" Click="SaveLayout_Click" ToolTip="Save every window's panels, maps and positions now (also done on exit)"/>
+                <MenuItem Header="_Theme" SubmenuOpened="Theme_SubmenuOpened">
+                    <MenuItem x:Name="ThemeSystem" Header="_System (follow Windows)" Tag="System" Click="Theme_Click"/>
+                    <MenuItem x:Name="ThemeDark" Header="_Dark" Tag="Dark" Click="Theme_Click"/>
+                    <MenuItem x:Name="ThemeLight" Header="_Light" Tag="Light" Click="Theme_Click"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="Map _data">
+                    <MenuItem Header="Set airfield _diagrams folder for this theatre…" Click="SetDiagrams_Click"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="_Reset layout" Click="ResetLayout_Click"/>
+            </MenuItem>
+        </Menu>
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock x:Name="ConnectionText" Text="Not connected"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock x:Name="PictureText"/>
+            </StatusBarItem>
+        </StatusBar>
+        <!-- Docking theme: set by ThemeManager (VS2013 dark or light with the app theme). -->
+        <ad:DockingManager x:Name="Dock"/>
+    </DockPanel>
+</Window>

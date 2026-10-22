@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Dcb.Client.Core.Tests/Dcb.Client.Core.Tests.csproj" />
+  <Project Path="Dcb.Client.Core/Dcb.Client.Core.csproj" />
+  <Project Path="Dcb.Client/Dcb.Client.csproj" />
+  <Project Path="Dcb.Probe/Dcb.Probe.csproj" />
+</Solution>

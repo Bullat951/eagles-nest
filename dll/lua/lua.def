@@ -1,0 +1,14 @@
+LIBRARY lua
+EXPORTS
+    lua_pushboolean
+    lua_pushstring
+    lua_pushlstring
+    lua_pushinteger
+    lua_createtable
+    lua_rawseti
+    lua_setfield
+    lua_toboolean
+    luaL_checkinteger
+    luaL_checklstring
+    luaL_optlstring
+    luaL_register

@@ -1,0 +1,77 @@
+<UserControl x:Class="Dcb.Client.Panels.AtcPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:airfields="clr-namespace:Dcb.Client.Map.Airfields"
+             xmlns:panels="clr-namespace:Dcb.Client.Panels">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="170" MinHeight="60"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*" MinHeight="120"/>
+        </Grid.RowDefinitions>
+        <ToolBar Grid.Row="0" ToolBarTray.IsLocked="True">
+            <TextBlock Text="Find" VerticalAlignment="Center" Margin="2,0,4,0"/>
+            <TextBox x:Name="FilterBox" Width="120" TextChanged="Filter_Changed"/>
+            <CheckBox x:Name="BlueBox" Content="Blue" IsChecked="True" Margin="10,0,6,0" Click="Filter_Click"/>
+            <CheckBox x:Name="RedBox" Content="Red" IsChecked="True" Margin="0,0,6,0" Click="Filter_Click"/>
+            <CheckBox x:Name="NeutralBox" Content="Neutral" IsChecked="True" Margin="0,0,6,0" Click="Filter_Click"/>
+            <CheckBox x:Name="HelipadBox" Content="Helipads" IsChecked="False" Click="Filter_Click"/>
+        </ToolBar>
+        <DataGrid Grid.Row="1" x:Name="Grid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal" SelectionMode="Single"
+                  SelectionChanged="Grid_SelectionChanged" MouseDoubleClick="Grid_MouseDoubleClick">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Foreground" Value="{Binding Brush}"/>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Airfield" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Owner" Binding="{Binding Owner}"/>
+                <DataGridTextColumn Header="Runways" Binding="{Binding RunwaysText}"/>
+                <DataGridTextColumn Header="Parking" Binding="{Binding ParkingCount}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <GridSplitter Grid.Row="2" Height="5" HorizontalAlignment="Stretch" ResizeDirection="Rows"/>
+        <DockPanel Grid.Row="3">
+            <DockPanel DockPanel.Dock="Top" Margin="6,3">
+                <Button DockPanel.Dock="Right" x:Name="InfoButton" Content="Airfield info…" Padding="8,0" Margin="4,0,0,0"
+                        IsEnabled="False" Click="Info_Click" ToolTip="Send this airfield's information to a player (on-screen text)"/>
+                <Button DockPanel.Dock="Right" x:Name="AtisButton" Content="ATIS…" Padding="8,0" Margin="8,0,0,0"
+                        IsEnabled="False" Click="Atis_Click" ToolTip="Send this airfield's ATIS to a player (on-screen text)"/>
+                <Button DockPanel.Dock="Right" x:Name="AtcChannelButton" Content="Set CH6" Padding="8,0" Margin="4,0,0,0" FontWeight="SemiBold"
+                        IsEnabled="False" Click="AtcChannel_Click" ToolTip="Tune your SRS channel 6 (ATC) to this frequency"/>
+                <ComboBox DockPanel.Dock="Right" x:Name="AtcChannelBox" Width="150" Margin="8,0,0,0" IsEnabled="False"
+                          ToolTip="This airfield's tower frequencies (or the carrier's radio)"/>
+                <TextBlock x:Name="FieldText" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Text="Select an airfield to work its traffic."/>
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Bottom" Margin="6,2" Foreground="{DynamicResource Dcb.TextDim}" FontSize="11"
+                       Text="Diagram: wheel zoom · drag pan · double-click whole airfield.  Approach / Carrier: drag to pan (10 NM), double-click to centre; Approach: click the header for another runway end."/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="200"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="340" MinWidth="0"/>
+                </Grid.ColumnDefinitions>
+            <TabControl Grid.Column="0" x:Name="Views" Padding="0">
+                <TabItem Header="Diagram" x:Name="DiagramTab">
+                    <airfields:AirfieldDiagramView x:Name="Diagram"/>
+                </TabItem>
+                <TabItem Header="Approach (10 NM)" x:Name="ApproachTab">
+                    <airfields:ApproachView x:Name="Approach"/>
+                </TabItem>
+                <TabItem Header="Carrier" x:Name="CarrierTab" Visibility="Collapsed">
+                    <airfields:CarrierView x:Name="CarrierView"/>
+                </TabItem>
+                <TabItem Header="LSO" x:Name="LsoTab" Visibility="Collapsed">
+                    <airfields:LsoView x:Name="Lso"/>
+                </TabItem>
+            </TabControl>
+                <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" ResizeDirection="Columns"/>
+                <panels:RunwayQueuePanel Grid.Column="2" x:Name="Queue"/>
+            </Grid>
+        </DockPanel>
+    </Grid>
+</UserControl>

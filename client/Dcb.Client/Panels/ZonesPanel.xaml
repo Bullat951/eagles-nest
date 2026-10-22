@@ -1,0 +1,38 @@
+<UserControl x:Class="Dcb.Client.Panels.ZonesPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel>
+        <ToolBar DockPanel.Dock="Top" ToolBarTray.IsLocked="True">
+            <CheckBox x:Name="BlueBox" Content="Blue" IsChecked="True" Margin="2,0,8,0" Click="Filter_Click"/>
+            <CheckBox x:Name="RedBox" Content="Red" IsChecked="True" Margin="0,0,8,0" Click="Filter_Click"/>
+            <CheckBox x:Name="NeutralBox" Content="Neutral" IsChecked="True" Margin="0,0,8,0" Click="Filter_Click"/>
+            <Separator/>
+            <CheckBox x:Name="SuspendedBox" Content="Idle zones" IsChecked="True" Margin="8,0,0,0" Click="Filter_Click"/>
+        </ToolBar>
+        <TextBlock DockPanel.Dock="Bottom" x:Name="SummaryText" Margin="6,3"/>
+        <TextBlock x:Name="EmptyText" DockPanel.Dock="Top" Margin="12" TextWrapping="Wrap" Foreground="{DynamicResource Dcb.TextDim}"
+                   Text="No Foothold campaign on this server. Zones appear here when the server runs a Foothold mission."/>
+        <DataGrid x:Name="Grid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal" SelectionMode="Single"
+                  SelectionChanged="Grid_SelectionChanged" MouseDoubleClick="Grid_MouseDoubleClick">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="Foreground" Value="{Binding Brush}"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Suspended}" Value="True">
+                            <Setter Property="Opacity" Value="0.6"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="WPT" Binding="{Binding Waypoint}"/>
+                <DataGridTextColumn Header="Zone" Binding="{Binding Name}"/>
+                <DataGridTextColumn Header="Owner" Binding="{Binding Owner}"/>
+                <DataGridTextColumn Header="Strength" Binding="{Binding StrengthText}"/>
+                <DataGridTextColumn Header="Type" Binding="{Binding Kind}"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</UserControl>

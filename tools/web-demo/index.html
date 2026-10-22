@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DCB Campaign Live</title>
+<style>
+  :root { --bg:#0f1418; --panel:#161d23; --line:#2a3640; --text:#dce4ea; --dim:#8a9aa8; --blue:#4c9cff; --red:#ff5a5a; --neutral:#9aa4ad; --accent:#f0c040; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 "Segoe UI", system-ui, sans-serif; }
+  header { display:flex; justify-content:space-between; align-items:baseline; gap:16px; padding:12px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.04em; }
+  .dim { color:var(--dim); }
+  main { display:grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap:12px; padding:12px 16px; }
+  @media (max-width: 900px) { main { grid-template-columns: minmax(0,1fr); } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:10px 12px; min-width:0; }
+  section h2 { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:0 0 8px; }
+  .credits { display:flex; gap:24px; font-size:20px; font-weight:600; }
+  .blue { color:var(--blue); } .red { color:var(--red); } .neutral { color:var(--neutral); }
+  svg { width:100%; height:auto; display:block; }
+  .missions { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  @media (max-width: 600px) { .missions { grid-template-columns: 1fr; } }
+  .mission { border-left:3px solid var(--line); padding:4px 8px; margin:0 0 8px; }
+  .mission.blue { border-color:var(--blue); } .mission.red { border-color:var(--red); }
+  .mission .t { font-weight:600; color:var(--text); }
+  .mission .d { color:var(--dim); font-size:12px; white-space:pre-line; max-height:4.2em; overflow:hidden; }
+  .tag { font-size:10px; padding:1px 5px; border-radius:3px; background:var(--line); color:var(--dim); margin-left:6px; text-transform:uppercase; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); }
+  th { color:var(--dim); font-weight:500; }
+  td.n { text-align:right; font-variant-numeric: tabular-nums; }
+  #feed { list-style:none; margin:0; padding:0; max-height:520px; overflow:auto; }
+  #feed li { padding:4px 0; border-bottom:1px solid var(--line); }
+  #feed li.new { animation: flash 2s ease-out; }
+  @keyframes flash { from { background:#2a3a20; } to { background:transparent; } }
+  #feed .time { color:var(--dim); font-size:12px; margin-right:6px; font-variant-numeric: tabular-nums; }
+  .wide { grid-column: 1 / -1; }
+  #status { font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CAMPAIGN LIVE</h1>
+  <div><span id="mission" class="dim">waiting for the server…</span> · <span id="status" class="dim">connecting</span></div>
+</header>
+<main>
+  <section>
+    <h2>Front line</h2>
+    <svg id="map" viewBox="0 0 600 420" role="img" aria-label="Foothold zones by owner"></svg>
+    <div class="dim" id="zoneCounts"></div>
+  </section>
+  <section>
+    <h2>Credits</h2>
+    <div class="credits"><span class="blue" id="cBlue">–</span><span class="red" id="cRed">–</span></div>
+    <h2 style="margin-top:14px">Live events</h2>
+    <ul id="feed"></ul>
+  </section>
+  <section class="wide">
+    <h2>Missions</h2>
+    <div class="missions">
+      <div><div class="blue" style="font-weight:600;margin-bottom:6px">BLUE</div><div id="mBlue" class="dim">none</div></div>
+      <div><div class="red" style="font-weight:600;margin-bottom:6px">RED</div><div id="mRed" class="dim">none</div></div>
+    </div>
+  </section>
+  <section class="wide">
+    <h2>Top players (Foothold points)</h2>
+    <div style="overflow:auto"><table><thead><tr><th>#</th><th>Pilot</th><th>Rank</th><th class="n">Points</th><th class="n">Air</th><th class="n">Ground</th><th class="n">SAM</th><th class="n">Captures</th><th class="n">Deaths</th></tr></thead><tbody id="players"><tr><td colspan="9" class="dim">no scores yet (Foothold reports every 5 minutes)</td></tr></tbody></table></div>
+  </section>
+</main>
+<script>
+const SIDE = { 0: "neutral", 1: "red", 2: "blue" };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function drawMap(zones, links) {
+  const svg = document.getElementById("map");
+  const pts = zones.filter(z => z.lat != null && z.lon != null);
+  if (!pts.length) { svg.innerHTML = '<text x="20" y="30" fill="#8a9aa8">no zones</text>'; return; }
+  const lats = pts.map(z => z.lat), lons = pts.map(z => z.lon);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const k = Math.cos((minLat + maxLat) / 2 * Math.PI / 180);
+  const w = 560, h = 380, sx = w / Math.max(1e-6, (maxLon - minLon) * k), sy = h / Math.max(1e-6, maxLat - minLat), s = Math.min(sx, sy);
+  const X = lon => 20 + (lon - minLon) * k * s, Y = lat => 20 + (maxLat - lat) * s;
+  const byName = Object.fromEntries(pts.map(z => [z.name, z]));
+  let out = "";
+  for (const [a, b] of links || []) {
+    const za = byName[a], zb = byName[b];
+    if (za && zb) out += `<line x1="${X(za.lon)}" y1="${Y(za.lat)}" x2="${X(zb.lon)}" y2="${Y(zb.lat)}" stroke="#2a3640" stroke-width="1"/>`;
+  }
+  const colour = { 0: "#9aa4ad", 1: "#ff5a5a", 2: "#4c9cff" };
+  for (const z of pts) {
+    const c = colour[z.side] || colour[0];
+    out += `<circle cx="${X(z.lon)}" cy="${Y(z.lat)}" r="${z.airbase ? 6 : 4}" fill="${c}" fill-opacity="${z.suspended ? 0.35 : 0.9}"><title>${esc(z.name)} — ${SIDE[z.side]}${z.max ? ` (${z.built}/${z.max})` : ""}</title></circle>`;
+  }
+  svg.innerHTML = out;
+  const n = s => pts.filter(z => z.side === s).length;
+  document.getElementById("zoneCounts").innerHTML = `<span class="blue">${n(2)} blue</span> · <span class="red">${n(1)} red</span> · <span class="neutral">${n(0)} neutral</span> zones`;
+}
+
+function drawMissions(missions) {
+  const list = side => (missions || []).filter(m => m.side === side);
+  const html = ms => ms.length ? ms.map(m => `<div class="mission ${SIDE[m.side]}"><span class="t">${esc(m.title)}</span>${m.status === "available" ? '<span class="tag">available</span>' : ""}${m.strike ? '<span class="tag">strike</span>' : ""}<div class="d">${esc(m.description)}</div></div>`).join("") : "none";
+  document.getElementById("mBlue").innerHTML = html(list(2));
+  document.getElementById("mRed").innerHTML = html(list(1));
+}
+
+function drawPlayers(players) {
+  const rows = (players || []).map(p => ({ ...p, pts: (p.stats && (p.stats.Points || 0)) || 0 })).sort((a, b) => b.pts - a.pts).slice(0, 25);
+  if (!rows.length) return;
+  const st = (p, k) => (p.stats && p.stats[k]) || 0;
+  document.getElementById("players").innerHTML = rows.map((p, i) =>
+    `<tr><td>${i + 1}</td><td>${esc(p.name)}</td><td class="dim">${esc(p.rank || "")}</td><td class="n">${p.pts}</td><td class="n">${st(p, "Air") + st(p, "Helo")}</td><td class="n">${st(p, "Ground Units") + st(p, "Infantry") + st(p, "Structure") + st(p, "Ship")}</td><td class="n">${st(p, "SAM")}</td><td class="n">${st(p, "Zone capture")}</td><td class="n">${st(p, "Deaths")}</td></tr>`).join("");
+}
+
+function describe(e) {
+  const who = u => u && u.player ? `<b>${esc(u.player.name)}</b> (${esc(u.type)})` : u ? `${esc(SIDE_NAME(u.side))} ${esc(u.type)}` : "?";
+  const SIDE_NAME = s => s || "";
+  switch (e.kind) {
+    case "kill": return `${who(e.unit)} destroyed ${who(e.target)}${e.weapon ? ` with ${esc(e.weapon)}` : ""}${e.friendly ? ' <span class="red">friendly fire</span>' : ""}`;
+    case "takeoff": return `${who(e.unit)} took off${e.place ? ` from ${esc(e.place)}` : ""}`;
+    case "landing": return `${who(e.unit)} landed${e.place ? ` at ${esc(e.place)}` : ""}`;
+    case "crash": return `${who(e.unit)} crashed`;
+    case "eject": return `${who(e.unit)} ejected`;
+    case "zone_captured": return `<b>${esc(e.zone)}</b> captured by <span class="${SIDE[e.to]}">${SIDE[e.to]}</span>`;
+    case "mission_started": return `<span class="${SIDE[e.side]}">Mission started:</span> ${esc(e.title)}`;
+    case "mission_ended": return `<span class="${SIDE[e.side]}">Mission ended:</span> ${esc(e.title)}`;
+    default: return esc(e.kind);
+  }
+}
+
+function addEvent(line, fresh) {
+  let e; try { e = JSON.parse(line); } catch { return; }
+  const li = document.createElement("li");
+  if (fresh) li.className = "new";
+  const t = e.utc ? e.utc.substring(11, 19) + "Z" : "";
+  li.innerHTML = `<span class="time">${t}</span>${describe(e)}`;
+  const feed = document.getElementById("feed");
+  feed.prepend(li);
+  while (feed.children.length > 200) feed.lastChild.remove();
+}
+
+let initial = true;
+function connect() {
+  const es = new EventSource("/api/stream");
+  const status = document.getElementById("status");
+  es.onopen = () => { status.textContent = "live"; status.className = "blue"; };
+  es.onerror = () => { status.textContent = "reconnecting…"; status.className = "red"; };
+  es.addEventListener("state", m => {
+    const s = JSON.parse(m.data);
+    document.getElementById("mission").textContent = `${s.mission || ""} · updated ${(s.updated || "").substring(11, 19)}Z`;
+    const fh = s.foothold || {};
+    drawMap(fh.zones || [], fh.links || []);
+    drawMissions(fh.missions || []);
+    document.getElementById("cBlue").textContent = fh.credits ? `${fh.credits.blue} cr` : "–";
+    document.getElementById("cRed").textContent = fh.credits ? `${fh.credits.red} cr` : "–";
+    drawPlayers(s.players);
+  });
+  es.addEventListener("event", m => addEvent(m.data, !initial));
+  setTimeout(() => { initial = false; }, 1500);
+}
+connect();
+</script>
+</body>
+</html>

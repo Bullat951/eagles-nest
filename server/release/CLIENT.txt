@@ -1,0 +1,20 @@
+DCB client (for controllers)
+============================
+
+1. Install the .NET 10 Desktop Runtime (x64) once, from Microsoft:
+     https://dotnet.microsoft.com/download/dotnet/10.0   ("Desktop Runtime", Windows x64)
+2. Put Dcb.Client.exe anywhere (e.g. a DCB folder on the desktop) and start it.
+3. Connection -> Connect:
+     Host      the server's address (IP or name)
+     Port      10309 (unless the server admin says otherwise)
+     Password  your coalition's controller password (from the server admin)
+   Tick "Remember" to keep it (stored encrypted for your Windows user only).
+
+Optional
+- A DCS install on the same PC gives the DCS map, DCS satellite imagery, airfield pavement,
+  taxiway signs and navaids on the ATC diagrams. Without it, DCB still works with its own maps.
+- SRS: connect your SRS client in External AWACS Mode; the SRS tab in DCB then sets your radios,
+  shows who is on which frequency and who is talking.
+- Window -> Theme (dark/light), Window -> New window / ATC views for a second screen.
+
+Settings and layouts live in %AppData%\DCB.

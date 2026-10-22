@@ -1,0 +1,25 @@
+<!-- Tactical console, light: pale steel panels, teal accent. The same keys as Colors.Dark.xaml. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="Dcb.Bg" Color="#D9E0E7"/>
+    <SolidColorBrush x:Key="Dcb.Panel" Color="#EDF1F4"/>
+    <SolidColorBrush x:Key="Dcb.PanelAlt" Color="#F8FAFB"/>
+    <SolidColorBrush x:Key="Dcb.Control" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Dcb.Border" Color="#C3CDD6"/>
+    <SolidColorBrush x:Key="Dcb.BorderStrong" Color="#97A6B4"/>
+    <SolidColorBrush x:Key="Dcb.Text" Color="#14202B"/>
+    <SolidColorBrush x:Key="Dcb.TextDim" Color="#55687A"/>
+    <SolidColorBrush x:Key="Dcb.TextDisabled" Color="#9AA7B3"/>
+    <SolidColorBrush x:Key="Dcb.Accent" Color="#007C91"/>
+    <SolidColorBrush x:Key="Dcb.AccentText" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="Dcb.AccentSoft" Color="#CDE7EC"/>
+    <SolidColorBrush x:Key="Dcb.Hover" Color="#E0E7ED"/>
+    <SolidColorBrush x:Key="Dcb.Pressed" Color="#D2DBE3"/>
+    <SolidColorBrush x:Key="Dcb.Warn" Color="#A65F00"/>
+    <SolidColorBrush x:Key="Dcb.Danger" Color="#C62828"/>
+    <SolidColorBrush x:Key="Dcb.Good" Color="#1E7E34"/>
+    <SolidColorBrush x:Key="Dcb.Friendly" Color="#1E5FC0"/>
+    <SolidColorBrush x:Key="Dcb.Hostile" Color="#C62828"/>
+    <SolidColorBrush x:Key="Dcb.Unknown" Color="#8A6D00"/>
+    <SolidColorBrush x:Key="Dcb.Neutral" Color="#56636F"/>
+</ResourceDictionary>

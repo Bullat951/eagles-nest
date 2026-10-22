@@ -1,0 +1,34 @@
+<Window x:Class="Dcb.Client.ConnectDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Connect to DCB server" SizeToContent="WidthAndHeight" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="12">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="200"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="Server" VerticalAlignment="Center" Margin="0,0,8,6"/>
+        <TextBox x:Name="HostBox" Grid.Column="1" Margin="0,0,0,6"/>
+        <TextBlock Grid.Row="1" Text="Port" VerticalAlignment="Center" Margin="0,0,8,6"/>
+        <TextBox x:Name="PortBox" Grid.Row="1" Grid.Column="1" Margin="0,0,0,6"/>
+        <TextBlock Grid.Row="2" Text="Password" VerticalAlignment="Center" Margin="0,0,8,6"/>
+        <PasswordBox x:Name="PasswordBox" Grid.Row="2" Grid.Column="1" Margin="0,0,0,6"/>
+        <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="SRS (same server address)" FontWeight="SemiBold" Margin="0,6,0,4"/>
+        <TextBlock Grid.Row="4" Text="SRS port" VerticalAlignment="Center" Margin="0,0,8,6"/>
+        <TextBox x:Name="SrsPortBox" Grid.Row="4" Grid.Column="1" Margin="0,0,0,6"/>
+        <TextBlock Grid.Row="5" Text="EAM password" VerticalAlignment="Center" Margin="0,0,8,6"/>
+        <PasswordBox x:Name="EamBox" Grid.Row="5" Grid.Column="1" Margin="0,0,0,6"
+                     ToolTip="Your coalition's SRS External AWACS Mode password; empty = no SRS"/>
+        <CheckBox x:Name="RememberBox" Grid.Row="6" Grid.Column="1" Content="Remember" Margin="0,0,0,6"
+                  ToolTip="Keep both passwords for this Windows user (encrypted), so the dialog is filled in next time"/>
+        <StackPanel Grid.Row="7" Grid.ColumnSpan="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+            <TextBlock x:Name="ErrorText" Foreground="Firebrick" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <Button Content="Connect" Width="80" IsDefault="True" Click="Connect_Click"/>
+            <Button Content="Cancel" Width="80" Margin="6,0,0,0" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>
