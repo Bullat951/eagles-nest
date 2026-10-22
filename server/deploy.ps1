@@ -31,11 +31,10 @@ Copy-Item (Join-Path $repo 'lua\collector.lua') (Join-Path $svc 'Scripts\collect
 Copy-Item (Join-Path $repo 'lua\foothold.lua') (Join-Path $svc 'Scripts\foothold.lua') -Force
 Copy-Item (Join-Path $repo 'lua\DCB-hook.lua') (Join-Path $instance 'Scripts\Hooks\DCB-hook.lua') -Force
 $cfg = Join-Path $instance 'Config\DCB.lua'
-# A fresh instance gets the example (empty passwords: logins closed until they are set there).
-if (-not (Test-Path $cfg)) {
-    Copy-Item (Join-Path $PSScriptRoot 'config\DCB.example.lua') $cfg
-    Write-Host "Set the controller passwords in $cfg"
-}
+# The example goes next to it; on a fresh instance the hook makes DCB.lua from it with random
+# passwords on the first start (as a release install does).
+Copy-Item (Join-Path $PSScriptRoot 'config\DCB.example.lua') (Join-Path $instance 'Config\DCB.example.lua') -Force
+if (-not (Test-Path $cfg)) { Write-Host "First start creates $cfg with random controller passwords" }
 Write-Host "Installed DCB into $instance"
 
 if (-not $NoStart) { & (Join-Path $PSScriptRoot 'start-server.ps1') -InstanceName $InstanceName }

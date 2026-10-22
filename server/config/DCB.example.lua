@@ -1,9 +1,10 @@
--- DCB server settings. Rename this file to DCB.lua (in Saved Games\<server>\Config) and set
--- the two passwords. The password a controller logs in with decides their coalition.
--- An empty password keeps that side's logins closed.
+-- Eagle's Nest (DCB) server settings: Saved Games\<server>\Config\DCB.lua. On the first start
+-- the server makes DCB.lua from DCB.example.lua with a random password for each side; change
+-- them here if you like (restart the server after a change). The password a controller logs
+-- in with decides their coalition. An empty password keeps that side's logins closed.
 
-blue_password = ""   -- e.g. a long random phrase, different from red's
-red_password = ""
+blue_password = ""   -- the password blue controllers log in with
+red_password = ""    -- the one for red, different from blue's
 
 port = 10309          -- TCP port controllers connect to (open it in the firewall)
 interval = 1.0        -- seconds between pictures (1 is right for most servers)

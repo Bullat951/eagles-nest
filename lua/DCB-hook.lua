@@ -45,9 +45,28 @@ local function readFile(path)
     return s
 end
 
+-- First start: Config\DCB.lua is made from Config\DCB.example.lua (shipped next to it) with a
+-- new random password for each side, so a fresh install works without editing anything. The
+-- admin reads the passwords there (and may change them). An existing DCB.lua is never touched.
+local function createConfig(path)
+    local example = readFile(lfs.writedir() .. "Config\\DCB.example.lua")
+    if not example then return false end
+    local blue, red = dcb.random_hex(10), dcb.random_hex(10)
+    if not blue or not red then return false end
+    local text = example:gsub('blue_password%s*=%s*""', 'blue_password = "' .. blue .. '"', 1)
+        :gsub('red_password%s*=%s*""', 'red_password = "' .. red .. '"', 1)
+    local f = io.open(path, "w")
+    if not f then return false end
+    f:write(text)
+    f:close()
+    dcbLog("created " .. path .. " with new controller passwords for blue and red: give them to your controllers")
+    return true
+end
+
 local function loadConfig()
     local path = lfs.writedir() .. "Config\\DCB.lua"
     local chunk = loadfile(path)
+    if not chunk and createConfig(path) then chunk = loadfile(path) end
     if not chunk then
         dcbLog("no config at " .. path .. ", using defaults (logins disabled)")
         return

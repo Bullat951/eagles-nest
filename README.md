@@ -47,8 +47,10 @@ the scopes stay dark and the airport diagram stays white paper. Window → ATC v
 Diagram, Approach, Carrier or LSO view as a panel of its own (e.g. on a second screen); they
 follow the ATC tab's pick. Window → Save layout keeps the windows and panels as they are now.
 
-Release: `server\package.ps1` builds `release\DCB-Server-<version>.zip` (copy into the
-server's Saved Games folder; INSTALL.txt inside) and `release\DCB-Client-<version>.zip`.
+Release: `server\package.ps1` builds `release\EaglesNest-Server-<version>.zip` (copy into the
+server's Saved Games folder, nothing to run; the first start makes `Config\DCB.lua` with random
+controller passwords; Syria's terrain grid included; INSTALL.txt inside) and
+`release\EaglesNest-Client-<version>.zip`.
 Analytics and website export: [docs/ANALYTICS.md](docs/ANALYTICS.md); live demo page
 `node tools\web-demo\server.js` (http://127.0.0.1:8099).
 

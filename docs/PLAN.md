@@ -1009,7 +1009,9 @@ copy-paste with simple settings; gather mission and player scores/achievements f
 analysis and the website; see whether that and Foothold's active missions can be shown on a
 website in real time. Choices: players as hashed UCID + name; core flying + Foothold campaign;
 JSON-lines files; keep everything.
-- *Release*: `server\package.ps1` → `release\DCB-Server-<v>.zip` (`copy-into-saved-games\`
+- *Release* (renamed `EaglesNest-*` 2026-10-22; since then the hook makes `Config\DCB.lua` from
+  the example with random passwords on the first start, and the server zip carries the 500 m
+  terrain grids sampled on the test server — Syria): `server\package.ps1` → `release\DCB-Server-<v>.zip` (`copy-into-saved-games\`
   Mods/Scripts/Config + INSTALL.txt) and `DCB-Client-<v>.zip` (exe + CLIENT.txt). Settings ship
   as `DCB.example.lua` with empty passwords (logins closed until set), never overwriting a
   server's `DCB.lua`; no `dev_probe`. The DLL links the CRT statically (needs only DCS's

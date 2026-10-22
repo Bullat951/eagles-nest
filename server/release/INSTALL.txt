@@ -1,49 +1,44 @@
-DCB server install (DCS dedicated server or a hosted game)
-==========================================================
+Eagle's Nest server install (DCS dedicated server or a hosted game)
+==================================================================
 
-DCB adds a hook to the DCS server that controllers connect to with the DCB client (ATC/GCI).
-Nothing in your missions changes, and MissionScripting.lua stays as it is. Foothold missions
-are detected by themselves.
+Eagle's Nest adds a hook to the DCS server that controllers connect to with the Eagle's Nest
+client (ATC/GCI). Nothing in your missions changes, MissionScripting.lua stays as it is, and
+there is nothing to run: only files to copy. Foothold missions are detected by themselves.
 
-FIRST INSTALL
+INSTALL
 1. Stop the DCS server.
-2. Find the server's Saved Games folder: the one holding Config, Logs and Missions, e.g.
+2. Open the server's Saved Games folder: the one holding Config, Logs and Missions, e.g.
      C:\Users\<user>\Saved Games\DCS.server   or   ...\DCS.openbeta_server   or   ...\DCS
-3. Copy everything inside "copy-into-saved-games" into that folder (merge the folders).
-   This adds:  Mods\Services\DCB\  Scripts\Hooks\DCB-hook.lua  Config\DCB.example.lua
-4. In Config, rename DCB.example.lua to DCB.lua and open it in Notepad:
-     blue_password = "..."   the password blue controllers log in with
-     red_password  = "..."   the one for red (leave "" to keep red closed)
-   Use long passwords, different for each side.
-5. Open the port for controllers (PowerShell as administrator):
-     New-NetFirewallRule -DisplayName "DCB" -Direction Inbound -Protocol TCP -LocalPort 10309 -Action Allow
-   To let only your controllers in, add their addresses:  -RemoteAddress 203.0.113.5,198.51.100.7
+3. Copy everything inside "copy-into-saved-games" into it (merge the folders).
+4. Open TCP port 10309 for controllers (PowerShell as administrator):
+     New-NetFirewallRule -DisplayName "Eagles Nest" -Direction Inbound -Protocol TCP -LocalPort 10309 -Action Allow
    (A hosting provider may also need the port opened in its own panel.)
-6. Start the server and load a mission. In Logs\dcs.log you should see:
-     DCB (Main): hook loaded, dll 0.5.0
+5. Start the server. Done.
+
+The first start creates Config\DCB.lua with a random password for each side. Open it in
+Notepad, give the blue password to blue controllers and the red one to red. Change them there
+if you like (restart the server afterwards).
+
+Check: Logs\dcs.log shows
+     DCB (Main): hook loaded, dll __VERSION__
      DCB (Main): listening on port 10309
-   The first start on a terrain samples it once for line of sight (a few seconds, cached).
 
 UPDATE
-Stop the server, copy "copy-into-saved-games" again (your Config\DCB.lua is not touched),
-start the server.
+Stop the server, copy "copy-into-saved-games" again (your Config\DCB.lua is kept), start it.
 
 UNINSTALL
-Delete Mods\Services\DCB and Scripts\Hooks\DCB-hook.lua (and Config\DCB.lua if you like).
+Delete Mods\Services\DCB, Scripts\Hooks\DCB-hook.lua, Config\DCB.lua and the DCB folder.
 
 GOOD TO KNOW
-- Security: DCB talks plain TCP. Passwords and the picture are not encrypted on the way. Use
-  strong passwords, limit the firewall rule to your controllers' addresses, or put the
-  controllers on a VPN with the server (Tailscale, ZeroTier, WireGuard) and do not open the
-  port to the internet at all.
-- Each coalition's password shows that coalition's picture only (fog of war): own units plus
-  what its radars detect.
-- Controller actions (on-screen text to a player) are rate-limited and written to dcs.log.
-- Problems: search dcs.log for "DCB". A wrong or missing Config\DCB.lua shows as
-  "no config ... logins disabled".
-- Cost: about 2-5 ms of server time per second on a busy Foothold mission.
-- Analytics and website export (on by default, switch off in DCB.lua): DCB writes
-    DCB\analytics\*.jsonl   every session's events (players as keyed ids + names)
-    DCB\export\state.json, events.jsonl   the public part for a website (no units, no ids)
-  in the server's Saved Games folder. Nothing is sent anywhere. Back up DCB\analytics.key:
-  it makes the player ids, and a new key means new ids.
+- Security: the connection is plain TCP (passwords and the picture are not encrypted). Limit
+  the firewall rule to your controllers' addresses (add  -RemoteAddress 203.0.113.5,198.51.100.7)
+  or use a VPN (Tailscale, ZeroTier, WireGuard) and do not open the port to the internet.
+- Each coalition's password shows that coalition's picture only (fog of war).
+- Enemy ground units show on radar only in missions dated 2012 or later (enemy_ground in
+  DCB.lua); before that controllers find SAMs with pilots' RWR calls.
+- Terrain data for Syria is included; other terrains are sampled once on their first mission
+  (in the background) and kept in the DCB folder.
+- Controller actions (text to a player, F10 marks) are rate-limited and written to dcs.log.
+- Problems: search dcs.log for "DCB".
+- Analytics and website export (on by default, switch off in DCB.lua) are local files in the
+  DCB folder; nothing is sent anywhere. Back up DCB\analytics.key (it makes the player ids).
