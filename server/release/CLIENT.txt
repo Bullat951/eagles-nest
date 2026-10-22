@@ -1,5 +1,6 @@
-DCB client (for controllers)
-============================
+Eagle's Nest client (for controllers)
+=====================================
+Operations manual: https://github.com/Bullat951/eagles-nest/blob/main/docs/MANUAL.md
 
 1. Install the .NET 10 Desktop Runtime (x64) once, from Microsoft:
      https://dotnet.microsoft.com/download/dotnet/10.0   ("Desktop Runtime", Windows x64)
