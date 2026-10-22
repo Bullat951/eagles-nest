@@ -176,8 +176,11 @@ public sealed class AppSettings
     }
 
     private static readonly byte[] Entropy = "DCB connect"u8.ToArray();
-    /// <summary>DCS install folder for the chart base map; null = find it in the registry.</summary>
+    /// <summary>The DCS install the DCS maps, charts and airfield data are read from: null = search
+    /// for it, "" = the controller chose to run without DCS.</summary>
     public string? DcsPath { get; set; }
+    /// <summary>The DCS location was confirmed on first start (or later in Window → Map data).</summary>
+    public bool DcsPathConfirmed { get; set; }
     /// <summary>Airport-diagram folder (with diagrams.json) per theatre id; never copied.</summary>
     public Dictionary<string, string> Diagrams { get; set; } = [];
     public Dictionary<string, MapSettings> Maps { get; set; } = [];

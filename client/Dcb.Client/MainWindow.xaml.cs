@@ -52,6 +52,9 @@ public partial class MainWindow : Window
         {
             RestoreLayout();
             if (IsMain) OpenSavedWorkspaces();
+            // First start: where DCS World is (found automatically, the controller confirms or changes it).
+            if (IsMain && !DebugSnapshot.Active)
+                Dispatcher.BeginInvoke(() => DcsLocationWindow.AskOnFirstStart(this), DispatcherPriority.ContextIdle);
         };
         if (IsMain)
         {
@@ -436,6 +439,8 @@ public partial class MainWindow : Window
         ShowAnchorable(PackagesId, "Packages");
         return Dock.Layout.Descendents().OfType<LayoutAnchorable>().FirstOrDefault(a => a.ContentId == PackagesId)?.Content;
     }
+
+    private void DcsFolder_Click(object sender, RoutedEventArgs e) => DcsLocationWindow.Change(this);
 
     private void SetDiagrams_Click(object sender, RoutedEventArgs e)
     {

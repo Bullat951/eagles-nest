@@ -118,6 +118,12 @@ unavailable; `DCB_RENDERER=cpu` forces the CPU path. Colours, line widths, dashe
 come from `style/map-style.json`, the style file the website will share. Render errors go to
 `%LocalAppData%\DCB\render-errors.log`.
 
+DCS install: on the first start the client searches for DCS World (ED installer's registry
+entries, Steam's library folders, the usual folders on every fixed disk; a folder counts only
+with `bin\DCS.exe` or `bin-mt\DCS.exe` and `Mods\terrains`) and asks the controller to confirm
+it, pick another (Browse…) or continue without DCS. Window → Map data → DCS World folder…
+changes it later (a restart applies it). Kept as `DcsPath` in settings.json ("" = without DCS).
+
 Base maps: Scope (Natural Earth), Satellite (Esri), DCS Map (DCS terrain in DCS's F10 palette with the terrain's area fills — water,
 towns, forest, fields — plus its full road network and F10 vector lines, all from the local
 install, MGRS grid toggle; roads and areas are extracted once and cached under

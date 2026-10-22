@@ -36,6 +36,8 @@
                 </MenuItem>
                 <Separator/>
                 <MenuItem Header="Map _data">
+                    <MenuItem Header="DCS _World folder…" Click="DcsFolder_Click"
+                              ToolTip="Where DCS World is installed (DCS Map, Charts, Satellite and airfield details are read from it)"/>
                     <MenuItem Header="Set airfield _diagrams folder for this theatre…" Click="SetDiagrams_Click"/>
                 </MenuItem>
                 <Separator/>

@@ -91,6 +91,12 @@ public static class DebugSnapshot
                 window.ShowAtcView(Panels.AtcViewPanel.Diagram);
                 window.ShowAtcView(Panels.AtcViewPanel.Approach);
             }
+            else if (mode == "dcsfolder")
+            {
+                // The first-start DCS location dialog with what the search finds on this PC.
+                DcsLocationWindow.ShowForSnapshot(window);
+                zoomReport.Add("dcsfolder: " + string.Join(" | ", Map.Charts.DcsInstall.Search().Select(c => $"{c.Path} ({c.Source}: {string.Join(",", c.Terrains)})")));
+            }
             else if (mode == "perf")
             {
                 // The UI-thread cost per picture with the busy panels on show: the ATC tab on a

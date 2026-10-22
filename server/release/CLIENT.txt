@@ -13,6 +13,9 @@ DCB client (for controllers)
 Optional
 - A DCS install on the same PC gives the DCS map, DCS satellite imagery, airfield pavement,
   taxiway signs and navaids on the ATC diagrams. Without it, DCB still works with its own maps.
+  On the first start DCB looks for DCS itself (ED installer, Steam, the usual folders on every
+  disk) and asks you to confirm or pick the folder; change it later in Window -> Map data ->
+  DCS World folder.
 - SRS: connect your SRS client in External AWACS Mode; the SRS tab in DCB then sets your radios,
   shows who is on which frequency and who is talking.
 - Window -> Theme (dark/light), Window -> New window / ATC views for a second screen.

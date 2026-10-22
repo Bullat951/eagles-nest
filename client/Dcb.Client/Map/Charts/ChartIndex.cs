@@ -129,16 +129,69 @@ public sealed class ChartIndex
 }
 
 /// <summary>Locates the DCS World install: settings override, then the registry.</summary>
+/// <summary>The DCS World install the client reads maps, charts and airfield data from:
+/// Settings.DcsPath when the controller chose one ("" = chose to run without DCS), else the
+/// first install the search finds (ED's registry entries, Steam libraries, usual folders).</summary>
 public static class DcsInstall
 {
+    private static readonly object Lock = new();
+    private static IReadOnlyList<Core.DcsCandidate>? _found;
+
     public static string? Find()
     {
-        if (AppState.Settings.DcsPath is { Length: > 0 } configured && Directory.Exists(configured)) return configured;
-        foreach (var key in new[] { @"Software\Eagle Dynamics\DCS World", @"Software\Eagle Dynamics\DCS World OpenBeta" })
+        var configured = AppState.Settings.DcsPath;
+        if (configured is not null)
+            return configured.Length > 0 && Directory.Exists(configured) ? configured : null;
+        return Search().FirstOrDefault()?.Path;
+    }
+
+    /// <summary>Every DCS install on this PC, best guess first (searched once, then remembered).</summary>
+    public static IReadOnlyList<Core.DcsCandidate> Search(bool again = false)
+    {
+        lock (Lock)
         {
-            using var k = Registry.CurrentUser.OpenSubKey(key);
-            if (k?.GetValue("Path") is string path && Directory.Exists(path)) return path;
+            if (_found is null || again) _found = Core.DcsLocator.Verify(Guesses());
+            return _found;
         }
-        return null;
+    }
+
+    private static IEnumerable<(string, string)> Guesses()
+    {
+        // ED's own installer (standalone, and the old open beta) records its folder per user.
+        foreach (var key in new[] { @"Software\Eagle Dynamics\DCS World", @"Software\Eagle Dynamics\DCS World OpenBeta" })
+            if (Read(Registry.CurrentUser, key, "Path") is { } p) yield return (p, "ED installer");
+        // Steam: its library list names every drive folder games are installed in.
+        var steamRoots = new[]
+        {
+            Read(Registry.CurrentUser, @"Software\Valve\Steam", "SteamPath"),
+            Read(Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Valve\Steam", "InstallPath"),
+            Read(Registry.LocalMachine, @"SOFTWARE\Valve\Steam", "InstallPath"),
+        };
+        foreach (var steam in steamRoots.OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var root = steam.Replace('/', '\\');
+            yield return (Core.DcsLocator.InSteamLibrary(root), "Steam");
+            string? vdf = null;
+            try { vdf = File.ReadAllText(Path.Combine(root, "steamapps", "libraryfolders.vdf")); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            if (vdf is not null)
+                foreach (var lib in Core.DcsLocator.SteamLibraries(vdf)) yield return (Core.DcsLocator.InSteamLibrary(lib), "Steam");
+        }
+        // The usual folders on every local disk.
+        foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
+            foreach (var p in Core.DcsLocator.UsualFolders(drive.RootDirectory.FullName)) yield return (p, "found on " + drive.Name.TrimEnd('\\'));
+    }
+
+    private static string? Read(RegistryKey hive, string key, string name)
+    {
+        try
+        {
+            using var k = hive.OpenSubKey(key);
+            return k?.GetValue(name) as string;
+        }
+        catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            return null;
+        }
     }
 }
