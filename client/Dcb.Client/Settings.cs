@@ -149,6 +149,8 @@ public sealed class AppSettings
     public string RwrKey { get; set; } = "R";
     /// <summary>"System" (follow Windows' app mode), "Dark" or "Light".</summary>
     public string Theme { get; set; } = "System";
+    /// <summary>Recovery cases drawn on the Carrier view ("1".."3" → on/off); missing = only the current case.</summary>
+    public Dictionary<string, bool> CarrierCases { get; set; } = [];
     /// <summary>"Remember" ticked in the connect dialog: the password is kept, encrypted with
     /// Windows DPAPI for the current user (unreadable to other accounts and other PCs).</summary>
     public bool RememberLogin { get; set; }

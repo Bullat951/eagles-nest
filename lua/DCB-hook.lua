@@ -480,6 +480,16 @@ local function runCommand(cmd)
         end
         return false, result
     end
+    if cmd.name == "carrier_lights" then
+        -- Checked in the server env (own coalition's carrier), set in the mission env, where the
+        -- Mission Editor's SET CARRIER LIGHTING MODE lives. Verified in MP on CVN-72 and Stennis.
+        local check = tostring(net.dostring_in("server", string.format("return DCB_carrierLightsCheck(%d, %q)", cmd.unit, cmd.coalition)))
+        if check ~= "ok" then return false, check end
+        local result = tostring(net.dostring_in("mission", string.format(
+            "return tostring(pcall(a_set_carrier_illumination_mode, %d, %d))", cmd.unit, cmd.mode)))
+        if result:sub(1, 4) == "true" then return true end
+        return false, "lights not set: " .. result
+    end
     if cmd.name == "mark_remove" then
         local result = net.dostring_in("server", string.format("return DCB_markRemove(%d, %q)", cmd.mark, cmd.coalition))
         if result == "ok" then
@@ -496,8 +506,8 @@ local function commandsTick()
         local okRun, ok, err = pcall(runCommand, cmd)
         if not okRun then ok, err = false, "server error: " .. tostring(ok) end
         dcb.command_result(cmd.client, cmd.id, ok and true or false, err)
-        dcbLog(string.format("command %s by %s (%s) unit %d mark %d, %d chars: %s",
-            cmd.name, cmd.address, cmd.coalition, cmd.unit, cmd.mark or 0, #cmd.text,
+        dcbLog(string.format("command %s by %s (%s) unit %d mark %d mode %d, %d chars: %s",
+            cmd.name, cmd.address, cmd.coalition, cmd.unit, cmd.mark or 0, cmd.mode or 0, #cmd.text,
             ok and ("done" .. (err and (" " .. err) or "")) or ("refused: " .. tostring(err))))
     end
 end

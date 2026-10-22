@@ -198,6 +198,7 @@ public partial class AtcPanel : UserControl
         if (carrier.Radio is { } radio) parts.Add($"radio {radio:0.000}");
         FieldText.Text = string.Join(" · ", parts);
         CarrierView.Show(carrier.Id);
+        CarrierLights.CarrierId = carrier.Id;
         Lso.Show(carrier.Id);
         AtisButton.IsEnabled = InfoButton.IsEnabled = false;
         ShowAtcChannel(carrier.Radio is { } shipRadio ? [($"Radio {shipRadio:0.000}", shipRadio)] : []);

@@ -63,7 +63,10 @@
                     <airfields:ApproachView x:Name="Approach"/>
                 </TabItem>
                 <TabItem Header="Carrier" x:Name="CarrierTab" Visibility="Collapsed">
-                    <airfields:CarrierView x:Name="CarrierView"/>
+                    <DockPanel>
+                        <panels:CarrierLightsBar x:Name="CarrierLights" DockPanel.Dock="Top"/>
+                        <airfields:CarrierView x:Name="CarrierView"/>
+                    </DockPanel>
                 </TabItem>
                 <TabItem Header="LSO" x:Name="LsoTab" Visibility="Collapsed">
                     <airfields:LsoView x:Name="Lso"/>

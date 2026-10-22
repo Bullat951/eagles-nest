@@ -126,6 +126,23 @@ function DCB_messageUnit(unitId, text, seconds, coalitionName)
     return "not an aircraft of your coalition (or it is gone)"
 end
 
+-- Controller command "carrier_lights": checks that the unit is a carrier (a type DCB_carrier
+-- knows) of the controller's own coalition. The hook then sets the mode in the mission env
+-- (a_set_carrier_illumination_mode lives there). Returns "ok" or the reason.
+function DCB_carrierLightsCheck(unitId, coalitionName)
+    local side = coalitionName == "blue" and coalition.side.BLUE or coalitionName == "red" and coalition.side.RED or nil
+    if not side then return "unknown coalition" end
+    for _, g in ipairs(coalition.getGroups(side, Group.Category.SHIP) or {}) do
+        for _, u in ipairs(g:getUnits() or {}) do
+            if u:isExist() and tonumber(u:getID()) == unitId then
+                if DCB_carrier and DCB_carrier.types and not DCB_carrier.types[u:getTypeName()] then return "not a carrier" end
+                return "ok"
+            end
+        end
+    end
+    return "not a ship of your coalition (or it is gone)"
+end
+
 -- F10 map marks. Controllers add marks for their own coalition (commands "mark_add"
 -- and "mark_remove", text and threat type as plain string arguments) and can remove only the
 -- ones DCB made for their coalition; DCB_marks lists every mark each side can see.

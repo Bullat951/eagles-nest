@@ -101,6 +101,9 @@ public static class AtisText
         return sb.ToString();
     }
 
+    /// <summary>A theatre's UTC offset in hours (DCS mission time is local), null when unknown.</summary>
+    public static double? UtcOffsetHours(string theatreId) => UtcOffsets.TryGetValue(theatreId, out var o) ? o : null;
+
     /// <summary>Mission time of day as UTC when the theatre's offset is known, else local.</summary>
     public static (TimeSpan Time, bool Zulu) Clock(double missionSeconds, string theatreId)
     {

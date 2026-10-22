@@ -24,17 +24,30 @@ public sealed class AtcViewPanel : UserControl
     private readonly ApproachView? _approach;
     private readonly CarrierView? _carrier;
     private readonly LsoView? _lso;
+    private readonly System.Windows.UIElement _view;
+    private readonly CarrierLightsBar? _lights;
 
     public AtcViewPanel(string kind)
     {
         _kind = kind;
-        Content = kind switch
+        _view = kind switch
         {
             Diagram => _diagram = new AirfieldDiagramView(),
             Approach => _approach = new ApproachView(),
             Carrier => _carrier = new CarrierView(),
             _ => _lso = new LsoView(),
         };
+        if (_carrier is not null)
+        {
+            // The carrier's lights buttons above its plan.
+            _lights = new CarrierLightsBar();
+            var dock = new DockPanel();
+            DockPanel.SetDock(_lights, Dock.Top);
+            dock.Children.Add(_lights);
+            dock.Children.Add(_view);
+            Content = dock;
+        }
+        else Content = _view;
         Loaded += (_, _) =>
         {
             AppState.AirfieldSelectionChanged += ShowPick;
@@ -68,6 +81,7 @@ public sealed class AtcViewPanel : UserControl
         else if (AppState.SelectedCarrierId is { } carrier)
         {
             _carrier?.Show(carrier);
+            if (_lights is not null) _lights.CarrierId = carrier;
             _lso?.Show(carrier);
         }
     }
@@ -84,7 +98,7 @@ public sealed class AtcViewPanel : UserControl
         if (_lso is not null || _carrier is not null) InvalidateVisualOf();
     }
 
-    private void InvalidateVisualOf() => ((System.Windows.UIElement)Content).InvalidateVisual();
+    private void InvalidateVisualOf() => _view.InvalidateVisual();
 
     public string Kind => _kind;
 }

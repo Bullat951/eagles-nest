@@ -12,13 +12,16 @@ namespace Dcb.Client.Map.Airfields;
 /// traffic, the recovery case from the weather and the marshal stack.</summary>
 public sealed class CarrierView : FrameworkElement
 {
-    private const double HeaderH = 30, Pad = 8, InfoW = 330, MinNm = 1, MaxNm = 20, FinalNm = 10;
+    private const double HeaderH = 30, Pad = 8, InfoW = 330, MinNm = 1, MaxNm = 40, FinalNm = 10;
+
+    private static readonly Brush CaseTwo = Frozen(Color.FromRgb(0xFF, 0xB0, 0x20));
+    private static readonly Brush CaseThree = Frozen(Color.FromRgb(0xB4, 0x8C, 0xFF));
     private const double ShipMinPx = 26;  // the hull is drawn at least this long, whatever the zoom
 
     /// <summary>Plan range: ship to the nearer edge, NM.</summary>
     private double _rangeNm = 10;
 
-    private const double MaxPanNm = 10;
+    private const double MaxPanNm = 30;  // the Case III marshal sits 21+ NM astern
     private Vec _pan;     // plan centre off the ship, metres (forward, starboard)
     private double _scale = 1;
     private Rect _planRect;
@@ -41,9 +44,12 @@ public sealed class CarrierView : FrameworkElement
     {
         ClipToBounds = true;
         SizeChanged += (_, _) => InvalidateVisual();
+        // A guidance-line chip toggled: redraw now rather than at the next picture.
+        Loaded += (_, _) => CarrierCases.Changed += InvalidateVisual;
+        Unloaded += (_, _) => CarrierCases.Changed -= InvalidateVisual;
     }
 
-    /// <summary>Plan range in NM (1–20), as the wheel sets it.</summary>
+    /// <summary>Plan range in NM (1–40), as the wheel sets it.</summary>
     public double RangeNm
     {
         get => _rangeNm;
@@ -95,7 +101,15 @@ public sealed class CarrierView : FrameworkElement
 
         var wod = CarrierState.WindOverDeck(ship, info, g);
         var speedKt = Math.Sqrt(ship.Vx * ship.Vx + ship.Vz * ship.Vz) * Groove.KnotsPerMs;
-        var rcase = Marshal.CaseFor(store.Weather);
+        // The case DCS runs: weather, and Case III whenever the sun is down at the ship.
+        double? sun = null;
+        if (store.Theatre is { } theatre && Sun.MissionUtc(store.Weather, store.AbsTimeNow, theatre.Id) is { } utc)
+        {
+            var (lat, lon) = theatre.ToLatLon(ship.X, ship.Z);
+            sun = Sun.ElevationDeg(utc, lat, lon);
+        }
+        var rcase = Marshal.CaseFor(store.Weather, sun);
+        CarrierCases.SetCurrent(rcase);
         var header = new List<string> { CarrierGeometry.Label(info.Type).ToUpperInvariant(), $"BRC {CarrierState.Mag(ship, ship.Hdg)}", $"{speedKt:0} KT" };
         if (g.Arrested) header.Add($"FB {CarrierState.Mag(ship, Groove.FinalBearingGrid(ship, g))}");
         header.Add($"WOD {wod.Knots:0} KT ({wod.AxialKt:0} axial, {Math.Abs(wod.CrossKt):0} {(wod.CrossKt >= 0 ? "stbd" : "port")})");
@@ -135,7 +149,7 @@ public sealed class CarrierView : FrameworkElement
         }
 
         // Range rings at round distances for the zoom.
-        var ringStep = _rangeNm switch { <= 2 => 0.5, <= 5 => 1, <= 12 => 2, _ => 5 };
+        var ringStep = _rangeNm switch { <= 2 => 0.5, <= 5 => 1, <= 12 => 2, <= 25 => 5, _ => 10 };
         for (var nm = ringStep; nm <= _rangeNm * 1.45; nm += ringStep)
         {
             dc.DrawEllipse(null, new Pen(Grid, 0.7), c, nm * nmM * scale, nm * nmM * scale);
@@ -146,7 +160,16 @@ public sealed class CarrierView : FrameworkElement
         Point Along(double m) => S(g.TouchdownForward + Math.Cos(a) * m, g.TouchdownStarboard + Math.Sin(a) * m);
         if (g.Arrested)
         {
-            DrawCaseOne(dc, rcase == 1, Along(-0.75 * nmM), N, scale, dpi);
+            // Guidance lines: each recovery case when shown (the current one by default).
+            // Positions along the final, in NM astern, and sideways (left of the inbound course +).
+            var inF = Math.Cos(a);
+            var inS = Math.Sin(a);
+            // Left of the inbound course (towards the ship) is to port when it points at the bow.
+            Point P(double asternNm, double leftNm) => S(g.TouchdownForward - inF * asternNm * nmM + inS * leftNm * nmM,
+                g.TouchdownStarboard - inS * asternNm * nmM - inF * leftNm * nmM);
+            if (CarrierCases.Shown(3)) DrawCaseThree(dc, P, dpi);
+            if (CarrierCases.Shown(2)) DrawCaseTwo(dc, P, Along(-0.75 * nmM), N, scale, withPattern: !CarrierCases.Shown(1), dpi);
+            if (CarrierCases.Shown(1)) DrawCaseOne(dc, Own, holding: true, Along(-0.75 * nmM), N, scale, dpi);
             // The final astern to 10 NM, ticked every 1/4 NM close in, else every NM.
             dc.DrawLine(new Pen(Path, 1.2) { DashStyle = new DashStyle([6, 4], 0) }, Along(0), Along(-FinalNm * nmM));
             var tick = 1 * nmM * scale >= 70 ? 0.25 : 1.0;
@@ -243,18 +266,81 @@ public sealed class CarrierView : FrameworkElement
         e.Handled = true;
     }
 
+    /// <summary>Case III, schematic, along the final extended (left-hand marshal on the
+    /// reciprocal of the final bearing, standard figures): marshal at DME = angels + 15 (first
+    /// slot angels 6, 21 DME; +1 NM and +1000 ft per slot), push at 250 kt descending 4000 ft/min
+    /// to the platform at 5000 ft, then 2000 ft/min to 1200 ft, level by 12 NM, dirty up at
+    /// 10 NM, the 6-mile gate at 1200 ft, glideslope about 3 NM, call the ball at ¾ NM.</summary>
+    private static void DrawCaseThree(DrawingContext dc, Func<double, double, Point> p, double dpi)
+    {
+        var brush = CaseThree;
+        var pen = new Pen(brush, 1.2) { DashStyle = new DashStyle([7, 4], 0) };
+        const double fix = 21, leg = 6, width = 2.5;
+        // The approach from the marshal fix down the final to the ramp.
+        dc.DrawLine(pen, p(fix, 0), p(0.75, 0));
+        // Marshal: left-hand racetrack, inbound leg ending at the fix.
+        var track = new StreamGeometry();
+        using (var ctx = track.Open())
+        {
+            ctx.BeginFigure(p(fix + leg, 0), false, false);
+            ctx.LineTo(p(fix, 0), true, false);
+            for (var t = 0.0; t <= Math.PI + 1e-9; t += Math.PI / 18)      // left turn at the fix
+                ctx.LineTo(p(fix - width / 2 * Math.Sin(t), width / 2 - width / 2 * Math.Cos(t)), true, true);
+            ctx.LineTo(p(fix + leg, width), true, false);                 // outbound leg
+            for (var t = 0.0; t <= Math.PI + 1e-9; t += Math.PI / 18)      // left turn back inbound
+                ctx.LineTo(p(fix + leg + width / 2 * Math.Sin(t), width / 2 + width / 2 * Math.Cos(t)), true, true);
+        }
+        track.Freeze();
+        dc.DrawGeometry(null, new Pen(brush, 1) { DashStyle = new DashStyle([3, 3], 0) }, track);
+        void Mark(double nm, string text, bool left = false)
+        {
+            var at = p(nm, 0);
+            dc.DrawEllipse(brush, null, at, 2.5, 2.5);
+            if (left) LabelLeftOf(dc, text, at, brush, 9, dpi);
+            else Label(dc, text, at + new Vec(8, -6), brush, 9, dpi);
+        }
+        Mark(fix, "CASE III MARSHAL · A6 · 21 DME");
+        Label(dc, "+1 NM, +1000 FT per slot · push 250 KT, 4000 FT/MIN", p(fix, 0) + new Vec(8, 7), brush, 9, dpi);
+        Mark(20, "PLATFORM 5000 FT → 2000 FT/MIN");
+        Mark(12, "12 NM · LEVEL 1200 FT");
+        Mark(10, "10 NM · 1200 FT · DIRTY UP");
+        Mark(6, "6 NM · 1200 FT");
+        Mark(3, "3 NM · GLIDESLOPE ~1100 FT");
+        Mark(0.75, "¾ NM · CALL THE BALL");
+    }
+
+    /// <summary>Case II: depart marshal and descend as Case III to 10 NM at 1200 ft, then
+    /// visually to 800 ft up the initial and a Case I break (drawn here when Case I is not).</summary>
+    private static void DrawCaseTwo(DrawingContext dc, Func<double, double, Point> p, Point x, Func<double, double, Point> n,
+        double scale, bool withPattern, double dpi)
+    {
+        var brush = CaseTwo;
+        var pen = new Pen(brush, 1.2) { DashStyle = new DashStyle([7, 4], 0) };
+        dc.DrawLine(pen, p(21, -0.15), p(10, -0.15));
+        dc.DrawLine(pen, p(10, -0.15), n(-3, 0));                        // visual: to the initial
+        void Mark(Point at, string text)
+        {
+            dc.DrawEllipse(brush, null, at, 2.5, 2.5);
+            LabelLeftOf(dc, text, at, brush, 9, dpi);
+        }
+        Mark(p(21, -0.15), "CASE II · DEPART MARSHAL, DESCEND AS CASE III");
+        Mark(p(10, -0.15), "10 NM · 1200 FT · VISUAL → 800 FT, CASE I BREAK");
+        if (withPattern) DrawCaseOne(dc, brush, holding: false, x, n, scale, dpi);
+    }
+
     /// <summary>Case I, schematic and relative to the ship: the holding circle (left-hand, 5 NM
     /// across, tangent to the BRC line with the ship off the right wing), the initial from 3 NM
     /// astern at 800 ft, the left break ahead of the ship, downwind ~1.2 NM to port at 600 ft,
     /// the 180, the 90 at 450 ft and the turn into the groove at the X.</summary>
-    private static void DrawCaseOne(DrawingContext dc, bool current, Point x, Func<double, double, Point> n, double scale, double dpi)
+    private static void DrawCaseOne(DrawingContext dc, Brush brush, bool holding, Point x, Func<double, double, Point> n, double scale, double dpi)
     {
-        var brush = current ? Own : Grid;
         var pen = new Pen(brush, 1.1) { DashStyle = new DashStyle([5, 4], 0) };
         const double nmM = Groove.MetersPerNm;
-        // Holding.
-        dc.DrawEllipse(null, new Pen(brush, 0.9) { DashStyle = new DashStyle([2, 4], 0) }, n(0, -2.5), 2.5 * nmM * scale, 2.5 * nmM * scale);
-        Label(dc, current ? "CASE I HOLD · left · angels 2+" : "Case I hold (not the case now)", n(2.5, -4.6), brush, 9, dpi);
+        if (holding)
+        {
+            dc.DrawEllipse(null, new Pen(brush, 0.9) { DashStyle = new DashStyle([2, 4], 0) }, n(0, -2.5), 2.5 * nmM * scale, 2.5 * nmM * scale);
+            Label(dc, "CASE I HOLD · left · angels 2+", n(2.5, -4.6), brush, 9, dpi);
+        }
 
         const double breakFwd = 0.3, downwind = -1.2;
         // The final turn ends at the X, on the angled final: its centre is midway across.

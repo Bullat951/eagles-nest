@@ -1063,6 +1063,37 @@ Coordinates are read out by the controller on SRS (bullseye / DDM / MGRS with Co
   around an E-3 with 12 on its nose. Not checked live: the enemy-ground switch (this mission's
   radars reported no ground units at all at the time), a real pilot's spike.
 
+## Carrier lights and recovery-case guidance (2026-10-22, DLL 0.7)
+
+Research and live tests: [RESEARCH-LIGHTS.md](RESEARCH-LIGHTS.md). The test server runs a
+night copy of Foothold (`_downloads\foothold\Foothold_SY_extended_5.3.5_NIGHT_2130.miz`, start
+21:30; previous `serverSettings.lua` kept as `.before-night`).
+- *Carrier lights*: command `carrier_lights` {unit, mode −2…2} (DLL whitelist, own coalition's
+  carrier checked in the server env, `a_set_carrier_illumination_mode` in the mission env,
+  logged with the mode). Verified in MP by the user: all five modes on CVN-72, recovery on
+  Stennis. Carrier view: Lights bar OFF / AUTO / NAV / LAUNCH / RECOVERY with the last mode set
+  (DCS does not report it); a click while one is still on its way is sent right after (quick
+  clicks used to be lost while the buttons were disabled). Airfields: Akrotiri is lit at night
+  by itself and the lights do not follow ATC (radio-silent test); no control built.
+- *Recovery case*: `Marshal.CaseFor(wx, sunElevation)` — Case III whenever the sun is below the
+  horizon at the ship (as DCS's Supercarrier: night → Case III; day: ceiling < 1000 ft or
+  visibility < 5 NM). `Core/Sun.cs` (solar elevation ±0.5°, mission UTC from the weather date,
+  mission time and the theatre offset). 177 tests.
+- *Guidance lines* (user: toggles, the current case on by default): chips Case I / II / III +
+  "auto" on the Carrier view's bar (`CarrierCases`, overrides in `AppSettings.CarrierCases`).
+  Case I in blue (as before), Case II in amber (depart marshal, descend as Case III to 10 NM at
+  1200 ft, visual to 800 ft and the Case I break), Case III in violet (left-hand marshal
+  racetrack on the final's reciprocal, A6 at 21 DME, +1 NM / +1000 ft per slot, push 250 kt at
+  4000 ft/min, platform 5000 ft → 2000 ft/min, level 1200 ft by 12 NM, dirty up 10 NM, 6 NM,
+  glideslope ~3 NM, ball at ¾ NM). Carrier plan zoom to 40 NM, pan to 30 NM. Checked by
+  snapshot (auto at night → Case III only; all three).
+- *ACLS (research only, user: no link switching)*: ACLS needs the carrier's ACLS and Link 4
+  active — Mission Editor carrier commands `ActivateACLS` / `ActivateLink4` (+ Deactivate,
+  ICLS) via `Controller:setCommand`, accepted from a script on CVN-72 (re-sent with the
+  mission's own values). The case itself is not switchable (DCS picks it). Found no sign that
+  DCS datalinks Case III marshal data to the Hornet; scripts cannot write to an aircraft's
+  datalink. The Carrier view shows the mission's ACLS/Link 4 state read-only.
+
 ## Test environment
 
 Local dedicated-style server: `DCS.exe --server --norender -w DCS.server`

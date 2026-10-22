@@ -47,6 +47,13 @@ the threat, so deleting it in the game removes the threat from every controller.
 the controller's coalition (any controller of it); other marks are refused (`not a DCB mark of
 your coalition`).
 
+`{"type":"command","id":10,"name":"carrier_lights","unit":445,"mode":2}` (DLL 0.7) — a carrier's
+lighting mode, as the Mission Editor's SET CARRIER LIGHTING MODE (`a_set_carrier_illumination_mode`
+in the mission env): `mode` −2 off, −1 auto, 0 navigation, 1 launch, 2 recovery. Only a carrier
+type DCB knows, of the controller's own coalition (`not a ship of your coalition (or it is
+gone)`, `not a carrier`). Verified in multiplayer on CVN-72 and Stennis (RESEARCH-LIGHTS.md).
+DCS does not report a carrier's current mode.
+
 Answer to the same client: `{"type":"command_result","id":7,"ok":true}` (with `"value"` when
 the command returns one) or
 `{"type":"command_result","id":7,"ok":false,"error":"no player in that aircraft"}`. Errors

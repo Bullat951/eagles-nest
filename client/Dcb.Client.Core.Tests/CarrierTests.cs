@@ -158,6 +158,21 @@ public class CarrierTests
         Assert.Equal(2, Marshal.CaseFor(Wx(80000, 500, 8)));       // overcast at 1640 ft
         Assert.Equal(3, Marshal.CaseFor(Wx(80000, 200, 8)));       // overcast at 660 ft
         Assert.Equal(3, Marshal.CaseFor(Wx(5000, 3000, 0)));       // 2.7 NM visibility
+        Assert.Equal(3, Marshal.CaseFor(Wx(80000, 600, 2), sunElevationDeg: -8));   // clear night
+        Assert.Equal(1, Marshal.CaseFor(Wx(80000, 600, 2), sunElevationDeg: 40));   // clear day
+    }
+
+    [Fact]
+    public void Sun_by_day_and_night_off_cyprus()
+    {
+        // The test server's night mission: 1 July 2025, Syria (UTC+3), carriers at 34.0 N 32.5 E.
+        WeatherMessage wx = new("2025-07-01", 0, 80000, new FogWeather(false, 0, 0), new DustWeather(false, 0), new CloudWeather(600, 300, 2, null, 0), []);
+        var night = Sun.MissionUtc(wx, 21.5 * 3600, "Syria")!.Value;
+        Assert.Equal(new DateTime(2025, 7, 1, 18, 30, 0, DateTimeKind.Utc), night);
+        Assert.True(Sun.ElevationDeg(night, 34.0, 32.5) < -6);                    // well after sunset
+        Assert.InRange(Sun.ElevationDeg(Sun.MissionUtc(wx, 12.5 * 3600, "Syria")!.Value, 34.0, 32.5), 70, 82);  // midsummer noon
+        Assert.InRange(Sun.ElevationDeg(Sun.MissionUtc(wx, 7 * 3600, "Syria")!.Value, 34.0, 32.5), 5, 25);      // the day mission's 07:00
+        Assert.Null(Sun.MissionUtc(wx, 3600, "NoSuchTheatre"));
     }
 
     [Fact]

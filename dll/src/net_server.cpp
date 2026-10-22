@@ -189,6 +189,15 @@ std::string parseCommand(const std::string& line, Command& cmd) {
         if (!extractJsonInteger(line, "mark", cmd.mark) || cmd.mark <= 0) return "mark: an F10 mark id";
         return {};
     }
+    if (cmd.name == "carrier_lights") {
+        // A carrier's lighting mode, as the Mission Editor's SET CARRIER LIGHTING MODE:
+        // -2 off, -1 auto, 0 navigation, 1 launch, 2 recovery.
+        int64_t mode = 0;
+        if (!extractJsonInteger(line, "unit", cmd.unit) || cmd.unit <= 0) return "unit: a DCS unit id";
+        if (!extractJsonInteger(line, "mode", mode) || mode < -2 || mode > 2) return "mode: -2 to 2";
+        cmd.mode = static_cast<int>(mode);
+        return {};
+    }
     return "unknown command";
 }
 

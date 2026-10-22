@@ -307,9 +307,11 @@ public static class Marshal
     public sealed record Slot(int Number, Unit Unit, int Angels, int? Dme, double? PushTime, double RangeNm);
 
     /// <summary>Case I: ceiling ≥ 3000 ft and visibility ≥ 5 NM; Case II: ceiling ≥ 1000 ft and
-    /// visibility ≥ 5 NM; otherwise Case III. Clear skies count as no ceiling.</summary>
-    public static int CaseFor(WeatherMessage? wx)
+    /// visibility ≥ 5 NM; otherwise Case III. Clear skies count as no ceiling. At night (the sun
+    /// below the horizon at the ship) always Case III, as DCS's Supercarrier does.</summary>
+    public static int CaseFor(WeatherMessage? wx, double? sunElevationDeg = null)
     {
+        if (sunElevationDeg is < 0) return 3;
         if (wx is null) return 1;
         var visNm = wx.Visibility / Groove.MetersPerNm;
         if (wx.Fog is { On: true } fog) visNm = Math.Min(visNm, fog.Visibility / Groove.MetersPerNm);

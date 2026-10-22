@@ -21,13 +21,14 @@ struct Command {
     Coalition coalition = Blue; // decided by the controller's password at login
     std::string address;        // for the audit log
     int64_t id = 0;             // the client's own id, echoed in the result
-    std::string name;           // "message_unit", "mark_add", "mark_remove"
+    std::string name;           // "message_unit", "mark_add", "mark_remove", "carrier_lights"
     int64_t unit = 0;           // DCS unit id
     std::string text;
     int seconds = 0;
     int64_t x = 0, z = 0;       // DCS map metres (mark_add)
     std::string threat;         // threat type name, e.g. "SA-6" (mark_add, may be empty)
     int64_t mark = 0;           // F10 mark id (mark_remove)
+    int mode = 0;               // carrier lighting mode, -2 off .. 2 recovery (carrier_lights)
 };
 
 class NetServer {
