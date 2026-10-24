@@ -21,13 +21,14 @@ struct Command {
     Coalition coalition = Blue; // decided by the controller's password at login
     std::string address;        // for the audit log
     int64_t id = 0;             // the client's own id, echoed in the result
-    std::string name;           // "message_unit", "mark_add", "mark_remove", "carrier_lights"
+    std::string name;           // "message_unit", "mark_add", "mark_remove", "carrier_lights", "identify", "threat_add", "threat_remove"
     int64_t unit = 0;           // DCS unit id
-    std::string text;
+    std::string text;           // message text, mark text, or the identify label
     int seconds = 0;
-    int64_t x = 0, z = 0;       // DCS map metres (mark_add)
+    int64_t x = 0, z = 0;       // DCS map metres (mark_add, threat_add; nctr: one corner)
+    int64_t x2 = 0, z2 = 0;     // nctr: the other corner of the area
     std::string threat;         // threat type name, e.g. "SA-6" (mark_add, may be empty)
-    int64_t mark = 0;           // F10 mark id (mark_remove)
+    int64_t mark = 0;           // F10 mark id (mark_remove), shared threat id (threat_remove)
     int mode = 0;               // carrier lighting mode, -2 off .. 2 recovery (carrier_lights)
 };
 

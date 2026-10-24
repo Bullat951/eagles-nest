@@ -56,6 +56,10 @@ columns: 16 class swatches of 32 rows: 0 #CCCC99, 1 #939083, 2 #59574A, 3 #364E1
 4 #DC9C48, 5 #9F2616, 6 #378288, 7 black (α93), 8 #08197F (α138, water), 9 black,
 10 #374F15 (α216), 11–12 black, 13 red, 14 white, 15 transparent. The height scale of the
 ramp is not in the file (DCB uses 0–5000 m linear, uncalibrated).
+Caucasus and Persian Gulf have no `Map.zip`: the palette is `vfsTextures/MapTextures.zip:
+mapmodepalette.tif.dds`, DXT5 (BC3), 64×512, 10 mips, same layout — but the swatches are
+ordered differently: water (translucent blue, α130) is class **9**, class 8 is opaque black,
+class 0 brown #99572B. DCB picks water by colour (2026-10-23).
 
 ## Terrain surface (`surface/<id>.surface5`, "landscape5::Surface5File", 29 GB)
 The terrain mesh, in the landscape5 container. Geometry groups carry a class — `Land`,
@@ -91,12 +95,30 @@ lister `tools/dcs_surface5_probe.py`:
 - **Levels of detail**: besides the 8 km nodes (pool |x| ≤ ~7.7 km including skirts) the file
   holds coarser nodes 16 km to 512 km across (|x| ≥ 8.2 km; Syria 16 231 fine nodes,
   2 315 / 743 / 86 / 38 / 10 / 4 coarser) repeating the areas with simpler outlines. DCB
-  rasterises the finest only.
+  rasterises the finest only. **The finest size differs per terrain**: node widths (bbox
+  after each matrix) cluster Syria 8–14 km, then 17–28 km…; Caucasus 17–26 km, then 29 km…
+  (Caucasus has no 8 km level). `Surface5.FinestWidth` takes the narrowest 1 % and stops at the
+  first gap of > 1 km between sorted widths (Syria land cover: 75 of 75.6 M cells changed
+  against the old fixed |x| < 8 km rule; pavement identical). The per-vertex `depth` attribute
+  is not a level number.
 - Triangle vertex k of a class record = `Pbase[baseIndex[TRI[k]]]`.
 - Check against DCS (server-sampled 500 m surface grid, after the fix): lake cells on DCS
   land 988 (outline fringe; 33 674 before), sea on land 152, trees/town/field on water ~900.
 - ~11 s to extract at 100 m (the data reads dominate), 2.5 MB cached.
 - Roads/rivers/rail records are left to the vector layers.
+- **Class names and shaders differ per terrain** (`Dcb.Probe --census <surface5>`, 2026-10-23).
+  Syria: `Trees` Simple5.1; `field` HardSplat5.2 + `Field` Splatmap5.1; `Town` HardSplat5.2,
+  Blend5.1, Splatmap5.1; `lake` Lake5.1 + `Lake` Splatmap5.1; `Sea` Sea5.1 + WaveHeightOnlay5.1;
+  `Beach` Splatmap5.1. Caucasus: **`Forest`** CaucasusSimple5.1; `Field` Blend5.1,
+  SimpleOnlayArray5.1, HardSplat5.1; `Town` HardSplatArray5.1; `lake` Lake5.1; `Sea` Sea5.0 +
+  WaveHeightOnlay5.1; `Land` Surface5.0 / CaucasusSimple5.1 (plain terrain); `Beach` also on
+  Road5.1/River5.1/BreakingWaves4.0 records. The extractor reads **every shader's records**
+  (span scan without a shader list) and maps `Forest` like `Trees`. Before, only 7 Syria shaders
+  started a span, so Caucasus got no area fills at all, and on Syria a skipped shader's record
+  was folded into the previous span (only its first `baseIndex`/`TRI` were seen): Syria now
+  +735 km² trees, +293 sea (coastal wave onlay), +142 field, −21 town, −6 lake of 755 000 km².
+  Caucasus around Kutaisi (50 × 60 km): 867 km² forest, 257 field, 1 326 town (village splats
+  cover rural settlements widely), 49 lake; whole theatre extracts in ~3–4 s at 100 m (1.5 MB).
 
 ## Airfield pavement (same file, class `Runway`)
 Runways, taxiways, aprons, shelters and stands are their own meshes in the surface5 file: class
@@ -106,7 +128,10 @@ differs per field (Akrotiri 163/167, Damascus 142/143, Incirlik 211–213, Basse
 is the paved area, the other a thin blending strip along its edges — the union of all
 `Runway5.1` triangles of the finest nodes is the pavement. Older fields (Hama, Damascus) model
 the taxiways and aprons but the runway surface itself only as an edge strip, so runways are
-drawn from `Airbase:getRunways()`. Syria: 742 990 triangles, extracted in 0.8 s
+drawn from `Airbase:getRunways()`. **Caucasus** uses other shaders for the same class:
+`OldRunway5.1` (477 records, the pavement), `Runway5.0` (4), `CaucasusSimple5.1` (coarse, left
+out), onlays `OldRunwayOnlay5.1` / `RunwayOnlay5.0`; 68 953 triangles, 0.1 s (2026-10-23).
+Syria: 742 990 triangles, extracted in 0.8 s
 (`Core/Pavement.cs`, `Dcb.Probe --pavement`), cached as `pavement_*.bin` (5.4 MB). The span
 scan finds records of every shader here (the area extractor keeps its 7-shader list; switching
 it to the shared reader `Core/Surface5.cs` changed none of Syria's 75.6 M land-cover cells).
@@ -129,9 +154,69 @@ u64 at 8 = data base (106 MB entry stream).
   runway sign, `arrow_*`. Boards are panels 0.8 m apart: a letter and a digit panel together
   name a taxiway like "A1". Syria: 6 904 signs at 40 airdromes (`Core/AirfieldSigns.cs`,
   `Dcb.Probe --signs`; index 0.1 s, one field 5 ms).
+- **Caucasus** (615 models, 25 306 nodes): location boards `<x>_block`, direction boards
+  `<x>_left|_right|_frwd` (letters A–J), runway signs `course_31_13` / `course_31l_13r`, towers
+  `kdp`, `kdp_big`, `batumi_kdp`, `airbase_*kdp*_tbilisi`. 266 signs; letter boards only at
+  Batumi, Senaki, Sukhumi, Tbilisi-Lochini, Soganlug, Vaziani — none at Kobuleti, Kutaisi and
+  the rest (DCS data, not a reader gap). **Nodes of different sizes**: signs in 512 m tiles,
+  towers in 16 km tiles (objects up to 8 km from the translation), and one node near the
+  origin (translation (−216, 551)) holding Sukhumi's signs at map-wide offsets. A node's reach
+  is taken from its translation's grid (largest power of two dividing it, ×1.25, ≥ 1 km;
+  off-grid = always searched); this also finds Nevatim's tower on Syria, missed before.
+- Airfield taxi networks (`AirfieldsTaxiways/*.rn4`) on Caucasus are not named like the fields
+  (`Senaki`, `Lochini`, `MinVody`, `Nalchick`, `Krasnodar_P`, `TbilisiMilitary` for Soganlug):
+  DCB falls back to the file whose network extent holds the runway centre.
 ## Raster charts (same container, `RasterCharts/rasterCharts.sup5`)
 Each tile record's placement (matrix + bbox) belongs to the **next** texture name in the
 file. See `client/Dcb.Client/Map/Charts/ChartIndex.cs`.
+
+## Land textures (`vfstextures/LandTextures<Season>.zip`, Caucasus; 2026-10-23)
+Terrains without `clipmaps` (Caucasus) keep the ground colour — what F10 "Sat" shows — as a
+virtual texture: `VirtualTextures/colortexture.vti` ("lVirtualTextureIndexFile4", index range
+−66…32 × −66…97) names the tiles, and `LandTextures{Summer,Spring,Autumn,Winter}.zip` hold them
+(~520 MB each): `land_39_<i>_<j>.png.dds` (11 808) and a 4× coarser `land_156_*` (871), 256×256
+DXT5 (alpha not coverage). The level names are nominal: the mesh's `xyz2uvw` per node is only its
+translation (the per-vertex `parametricUVW` is zero), so DCS maps **world position** straight to
+the texture: **38.4 m/px from the map origin**, tile (i, j) spanning x ∈ [i·9 830.4, (i+1)·9 830.4)
+north and z likewise east, pixel columns along +x, rows along +z (the clipmaps' layout). Measured:
+a least-squares fit over all 21 runways gave 38.43 / 38.39 m/px, intercepts 0.1 / 0.4 px, rotation
+0.02°, 6.5 px rms (the runway detector's noise); DCS's 500 m water cells then trace the coast at
+both ends of the map (Batumi–Poti, Anapa–Gelendzhik). An early 39.06 m/px guess (10 km tiles)
+fitted the south only — off ~3 km at Anapa. The texture paints some airfields slightly off
+(Kobuleti ~100 m south-east of DCS's runway; Anapa exact). `Map/Satellite/LandTextures.cs`;
+season from the mission date (Dec–Feb winter, Mar–May spring, Jun–Aug summer, Sep–Nov autumn).
+
+## Town ground (F10 "Sat" detail; research 2026-10-23, not built)
+The sharp villages/towns of F10 Sat on Caucasus are the `Town` records (`HardSplatArray5.1`) of
+`surface5`, textured per triangle with a village photo. **DCS describes the materials in plain
+Lua: `Mods/terrains/<id>/misc/materials.lma.lua`** (streams, defines, texture slots per shader);
+`misc/assets.assets` ("lAssetFile2.0", 17.8 MB) describes every asset, `misc/assets.ofsh` the
+source scenes, `misc/shaders.json` the shader list. No terrain shader source ships
+(`Bazar/shaders` has none of these defines).
+- `HardSplatArray5.1` (materials.lma.lua l.1024): streams `parametricUVW` = **INT1 into a shared
+  buffer `MeshAssetManifold5`** (`xyz2uvw` FLOAT16, `tangent`, `binormal` FLOAT4; l.680),
+  `offset`, `assetIndex` (per primitive), and texture channels `main` (color5), `closeupR/G/B/A`,
+  `closeup0`, `overlay`, each with **`setMaterialManifold` 0…6** — a second, per-material
+  transform from uvw to that texture's UV. Textures per asset: `<asset>.color.tif` (the photo,
+  `CLAMP_MAINTEXTURES`), `.roofs.tif`, `<asset>.tif` (splat map driving the close-up textures),
+  `.nm.tif`, `.si.tif`; `colorIndex`, `overlaySplatmapMask` properties.
+- **Found in the file:** the `MeshAssetManifold5` buffer of a node is the `xyz2uvw` / `tangent` /
+  `binormal` arrays in the node's **pool span** (the span holding `Pbase`); a Town vertex's
+  `parametricUVW` (u32) indexes it (node (−350208, 613376): 121 matrices, town indices 0–98; all
+  sampled nodes consistent). The matrix is **row-major on the node-local vertex position**:
+  rows 0 and 2 a rotation in the ground plane plus a shift (metres), row 1 the height. Per-vertex
+  `materialParamsIndex` (1015–1034 for towns) matches the asset record's `materialIndex` in
+  assets.assets (village_1: 1019).
+- **Not yet found:** the per-material manifold transform (uvw → photo UV). Plain wrapping by
+  1 024 m, all 8 axis orientations, scored against an F10 screenshot of Kobuleti: no correlation
+  (NCC ≈ 0.01). uvw ranges per asset span 3–22 km across its instances, so uvw is not
+  asset-local metres; the photo's frame must come from the material manifold (likely in the
+  material table ~13.31 MB of surface5 or the asset record in assets.assets, which also lists
+  the asset's sub-meshes: `gazin_new`, `home1_b`, `domik1c` with transforms).
+- Village photos: `village_N.color.tif` 1024², ~1 m/px by house size.
+- Tools: `tools/research/caucasus/town_rec.py`, `manifold_fit.py`, `manifold_apply.py`,
+  `asset_uv.py`; prototype `tools/SatPrototype` (towns placed by manifold, `score` command:
+  shift-searched NCC against a reference).
 
 ## Satellite clipmaps (`clipmaps/colortexture/<R>m[(season)]/<R>m[x]<AA><col>.tif.clipmap`)
 The terrain's satellite ground texture (also `normalmap/`, `splatmap/` in the same format).

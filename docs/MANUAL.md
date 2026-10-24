@@ -8,7 +8,7 @@ building from source is in [DEVELOPMENT.md](DEVELOPMENT.md).
 - [3. Maps](#3-maps)
 - [4. Keys and mouse](#4-keys-and-mouse)
 - [5. GCI](#5-gci)
-- [6. RWR triangulation and threats](#6-rwr-triangulation-and-threats)
+- [6. RWR, identification, NCTR and threats](#6-rwr-identification-nctr-and-threats)
 - [7. F10 map marks](#7-f10-map-marks)
 - [8. ATC](#8-atc)
 - [9. Carrier and LSO](#9-carrier-and-lso)
@@ -79,9 +79,10 @@ Toggles: **Labels** (full / short / none), **Threat rings**, **F10 marks**, **Zo
 | **Right-drag** | ruler: magnetic bearing and range in NM; ending on an aircraft adds its altitude and aspect (BRAA) |
 | Right-click | context menu of what is under the pointer (aircraft, threat, F10 mark, or the map) |
 | Hold **B** | bullseye call of the pointer position |
-| **R** | RWR clock for the aircraft under the pointer (or the selected one) |
+| **R** | RWR scope for the own unit under the pointer (or the selected one) |
+| **N** | NCTR: drag a box around contacts, pick methods, Run |
 | **Alt + click** | the point as DDM, DMS, decimal, MGRS, bullseye call and elevation, with Copy |
-| Esc | closes the RWR clock or the point box |
+| Esc | closes the RWR scope or the point box |
 
 The B and R keys can be changed in `%AppData%\DCB\settings.json` (`BullseyeKey`, `RwrKey`).
 
@@ -100,28 +101,83 @@ The B and R keys can be changed in `%AppData%\DCB\settings.json` (`BullseyeKey`,
 - **Foothold**: zones by owner with strength bars, links, logistics; the Zones panel lists them
   with credits and the mission board.
 
-## 6. RWR triangulation and threats
+## 6. RWR, identification, NCTR and threats
 
 ![Triangulation](images/triangulation.png)
 
 Enemy SAMs usually do not show on the scope (they do only in missions dated 2012 or later, a
-server setting). You find them with the pilots:
+server setting). You find them with the RWR of your aircraft (and the ESM of your ships and
+ground radars), and with the pilots' calls:
 
-1. A pilot calls a spike, e.g. *"spiked, 3 o'clock"*.
-2. Put the pointer on that aircraft (or select it) and press **R** — or right-click it →
-   *RWR spike…*. A clock appears around the aircraft with **12 on its nose**; click the position
-   the pilot called. A bearing line is drawn from where the aircraft is now, with a faint ±10°
-   wedge for RWR error, labelled with the clock position, callsign and time.
-3. Have the pilot turn or orbit and call again: each call adds a line. When two or more lines
-   of the same aircraft cross, a **fix** appears: a yellow cross with its error ellipse
-   (±major/minor in NM) and the bullseye call. More lines, wider angles → smaller ellipse.
+1. Put the pointer on an own unit (or select it) and press **R** — or right-click an aircraft →
+   *RWR…*. The **RWR scope** opens around it: what its warning receiver hears, from the server,
+   updated every second. Each emitter sits at its bearing (north up, the long tick is the
+   unit's nose), nearer the centre the stronger it is, with its RWR label ("6", "29", "50",
+   "S" search radar, "SH" ship). A bar over the label: airborne. Green: searching; yellow:
+   tracking this unit; red flashing: guiding a missile at it. The **mouse wheel** over the scope
+   makes it larger or smaller; labels that would overlap are moved apart, with a thin leader to
+   the dot where their bearing puts them.
+   ![RWR scope](images/rwr-scope.png)
+
+2. **Click an emitter**: a bearing line is drawn from where the unit is now, with a wedge for
+   that receiver's error (±5° ships and ground radars, ±10° aircraft, ±15° helicopters).
+   **Click anywhere else on the scope**: a line at that azimuth (±10°) — for a pilot's call
+   like *"spiked, 3 o'clock"* (the ticks are the clock positions). The pointer shows the
+   azimuth. The scope stays open for more lines; Esc or a click outside closes it. Lines are
+   labelled with bearing, emitter, callsign and time.
+3. Let the aircraft move (or have the pilot turn) and take the bearing again: each adds a line.
+   When two or more lines of the same unit cross, a **fix** appears: a yellow cross with its
+   error ellipse (±major/minor in NM) and the bullseye call. More lines, wider angles, tighter
+   receivers → smaller ellipse.
 4. Right-click the fix → **Place threat at fix** → the type (SA-2, SA-6, SA-11, AAA …). The
    threat's ring appears and that aircraft's lines are cleared. Anywhere else on the map:
    *Place threat here*.
 5. Right-click the threat → **Send to F10 map** to give it to the pilots (see the next section),
    or **Coordinates…** to read it out on the radio (bullseye, DDM, MGRS, with Copy).
 
-A threat not sent yet is your own note (only you see it); *Delete threat* removes it.
+**Identifying contacts.** On a server with `identification = "manual"` radar contacts arrive
+without a type ("UNK"). Right-click a contact → **Identify as**: first the RWR emitters whose
+bearings, from any of your units, pass through that contact (e.g. *"50   RWR: 16 receivers, 3°
+off"*), then every RWR label by group, or *Type a name…*. The identity goes to every controller
+of your coalition and shows where the type would be; a ground contact identified as a SAM ("6",
+"SA-11") gets its threat ring. *Clear identity* takes it back. Identities go when the unit dies
+or the mission changes.
+
+**NCTR.** Press **N** over the map, drag a box around contacts, tick the methods and *Run*.
+Your coalition's AI radars that hold them try each method for up to 20 s:
+
+| Method | Gives | Works when |
+|---|---|---|
+| JEM | engine family ("Su-27 family") | target is a jet, seen nose-on or tail-on (±30°), ≤ 40 NM (60 for AWACS, ships, ground radars) |
+| HRRP | type | radar is an AWACS, F-15, F-16 or F/A-18; aircraft ≤ 25 NM (50 AWACS) |
+| ISAR | type | ships, or aircraft turning more than 15° within 5 s |
+| Size | small / medium / large | any radar |
+| Rotor | type | helicopters, ≤ 20 NM |
+| Raid | how many aircraft in one contact ("2 aircraft") | modern radar, any aspect, ≤ 30 NM (50 for AWACS, ships, ground radars) |
+
+JEM, ISAR and rotor need a modern radar (not cold-war types) and a mission dated
+`nctr_year` (1985) or later. Each radar taking part looks along a **cone** from itself towards
+the targets it holds (drawn on the map, at most 30° wide): what is inside keeps updating;
+contacts outside the cones of the radars holding them are **frozen** ("FRZ") and keep their last
+position until NCTR ends. A radar out of range for every method still open makes no cone. The
+methods being worked on a contact flash in blue beside it ("JEM SIZE"); a method that failed
+gives its nearest miss and the radar ("CVN-74: aspect 48 deg"). The box shows the seconds left;
+answers appear under contacts not yet identified and first in their *Identify as* menu (you
+still pick the identity). Pilots who run NCTR in the cockpit tell you the result: *Identify as →
+Type a name…*.
+
+| | |
+|---|---|
+| ![NCTR cones](images/nctr-cones.png) | ![NCTR result](images/nctr-result.png) |
+| Two carriers' cones on a contact, size class already in | JEM on a Su-34 pair: "Su-27 family" |
+
+Two aircraft flying close together can show as one contact (DCS resolves them like a real
+radar would); *Raid* tells you how many are in it.
+
+**Placed threats are shared** with your coalition's other controllers while you are connected
+(not with the pilots): every controller sees the ring, can *Send to F10 map* (the F10 mark then
+replaces it) or *Delete threat* for everyone. Placed while not connected, a threat is your own
+note (only you see it); *Delete threat* removes it. Bearing lines stay your own.
 *Clear bearing lines* is on the aircraft's and the map's right-click menu.
 
 ## 7. F10 map marks
@@ -203,6 +259,11 @@ your SRS client in **External AWACS Mode**.
   passwords, the port, and:
   - `enemy_ground = "auto"` (with `enemy_ground_year = 2012`): enemy ground units appear on
     radar only in missions dated that year or later; `true` / `false` to force it.
+  - `rwr = true`: the server works out each own aircraft's RWR picture (and ships' and ground
+    radars' ESM) every second and sends it to that coalition only; `false` turns it off.
+  - `identification = "auto"`: contacts show their type once DCS identifies them;
+    `"manual"`: never — controllers identify them (section 6), shared within the coalition.
+  - `nctr_year = 1985`: NCTR methods other than size class only in missions dated then or later.
   - `analytics`, `export`: local files for statistics and a website (see
     [ANALYTICS.md](ANALYTICS.md)). Nothing is sent anywhere.
 - Everything Eagle's Nest does on the server is logged in `Logs\dcs.log` under "DCB": logins,

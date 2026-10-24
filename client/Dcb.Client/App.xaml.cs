@@ -33,6 +33,13 @@ public partial class App : Application
             if (AppState.RequestRwrClock()) e.Handled = true;
             return;
         }
+        // The NCTR key: drag an area on the map under the pointer.
+        if (e.IsDown && !e.IsRepeat && Enum.TryParse<Key>(AppState.Settings.NctrKey, ignoreCase: true, out var nctr) && e.Key == nctr
+            && Keyboard.FocusedElement is not (TextBoxBase or PasswordBox))
+        {
+            if (AppState.RequestNctr()) e.Handled = true;
+            return;
+        }
         if (!Enum.TryParse<Key>(AppState.Settings.BullseyeKey, ignoreCase: true, out var key) || e.Key != key) return;
         // Typing a "b" into a text box is not a bullseye request.
         if (e.IsDown && Keyboard.FocusedElement is TextBoxBase or PasswordBox) return;

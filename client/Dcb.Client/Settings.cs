@@ -144,9 +144,11 @@ public sealed class AppSettings
     public int Port { get; set; } = Core.DcbConnection.DefaultPort;
     /// <summary>Hold this key for the cursor's bullseye call (a WPF Key name: "B", "Space", "LeftShift"…).</summary>
     public string BullseyeKey { get; set; } = "B";
-    /// <summary>Press this key over a map for the RWR clock of the selected (or pointed-at) own
-    /// aircraft: the pilot's spike as a bearing line.</summary>
+    /// <summary>Press this key over a map for the RWR scope of the selected (or pointed-at) own
+    /// unit: bearing lines from what it hears.</summary>
     public string RwrKey { get; set; } = "R";
+    /// <summary>Press this key over a map, then drag a box: NCTR on the contacts inside it.</summary>
+    public string NctrKey { get; set; } = "N";
     /// <summary>"System" (follow Windows' app mode), "Dark" or "Light".</summary>
     public string Theme { get; set; } = "System";
     /// <summary>Recovery cases drawn on the Carrier view ("1".."3" → on/off); missing = only the current case.</summary>

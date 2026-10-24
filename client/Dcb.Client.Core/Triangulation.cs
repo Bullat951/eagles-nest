@@ -2,22 +2,23 @@ using System.Text.Json.Serialization;
 
 namespace Dcb.Client.Core;
 
-/// <summary>An RWR bearing a pilot called: from where the aircraft was, along its heading plus the
-/// clock position (3 o'clock = 90° right of the nose), true degrees.</summary>
-public sealed record BearingLine(int Id, long TrackId, string Label, double Lat, double Lon, double BearingTrue, int Clock, DateTime Time)
+/// <summary>An RWR bearing from where the unit was, true degrees, with its error (1σ, degrees):
+/// an emitter the server's RWR picture showed (<c>Emitter</c>: its RWR label), or an azimuth the
+/// controller picked on the scope (a pilot's call; <c>Emitter</c> null).</summary>
+public sealed record BearingLine(int Id, long TrackId, string Label, double Lat, double Lon, double BearingTrue,
+    double SigmaDeg, string? Emitter, DateTime Time)
 {
     /// <summary>True bearing of a clock position seen from a heading (12 = the nose).</summary>
     public static double BearingOf(double headingTrue, int clock) => Nav.Normalize(headingTrue + clock % 12 * 30);
 }
 
 /// <summary>Where crossing bearing lines put the emitter: position and the 1σ error ellipse
-/// (semi-axes in metres, the major axis' true bearing) from an RWR accuracy of
-/// <see cref="Triangulation.BearingSigmaDeg"/>.</summary>
+/// (semi-axes in metres, the major axis' true bearing) from the lines' bearing errors.</summary>
 public sealed record BearingFix(double Lat, double Lon, double MajorM, double MinorM, double MajorTrueDeg, int Lines);
 
 public static class Triangulation
 {
-    /// <summary>Assumed RWR bearing error (1σ). RWRs are coarse: ±10–15° is typical.</summary>
+    /// <summary>Bearing error (1σ) of an azimuth picked by hand. RWRs are coarse: ±10–15° is typical.</summary>
     public const double BearingSigmaDeg = 10;
     /// <summary>A fix further than this from a line's origin is not believed (no RWR hears that far).</summary>
     public const double MaxRangeM = 150 * Nav.MetersPerNm;
@@ -35,7 +36,7 @@ public static class Triangulation
         var d = lines.Select(l => (Math.Sin(l.BearingTrue * Math.PI / 180), Math.Cos(l.BearingTrue * Math.PI / 180))).ToArray();
         var w = Enumerable.Repeat(1.0, lines.Count).ToArray();
         double x = 0, y = 0, a11 = 0, a12 = 0, a22 = 0;
-        var tanSigma = Math.Tan(BearingSigmaDeg * Math.PI / 180);
+        var tanSigma = lines.Select(l => Math.Tan(Math.Max(1, l.SigmaDeg) * Math.PI / 180)).ToArray();
         for (int iter = 0; iter < 4; iter++)
         {
             a11 = a12 = a22 = 0;
@@ -55,7 +56,7 @@ public static class Triangulation
             for (int i = 0; i < lines.Count; i++)
             {
                 var range = Math.Max(1000, Math.Sqrt((x - p[i].Item1) * (x - p[i].Item1) + (y - p[i].Item2) * (y - p[i].Item2)));
-                var sigma = range * tanSigma;
+                var sigma = range * tanSigma[i];
                 w[i] = 1 / (sigma * sigma);
             }
         }
@@ -149,10 +150,24 @@ public sealed record F10Mark(
     public ThreatType? ThreatType => (Dcb ? Core.ThreatType.Find(Threat) : null) ?? Core.ThreatType.Parse(Text);
 }
 
-/// <summary>A threat as the maps draw it: one placed here and not sent, or an F10 mark that names
-/// a threat (sent from here — <see cref="Local"/> — by another controller, or by a player).
+/// <summary>The "threats" message: threats the coalition's controllers placed (command
+/// "threat_add"), shared among them only — not F10 marks. DCS map metres.</summary>
+public sealed record ThreatsMessage(
+    [property: JsonPropertyName("coalition")] string Coalition,
+    [property: JsonPropertyName("threats")] IReadOnlyList<SharedThreat> Threats);
+
+public sealed record SharedThreat(
+    [property: JsonPropertyName("id")] long Id,
+    [property: JsonPropertyName("x")] double X,
+    [property: JsonPropertyName("z")] double Z,
+    [property: JsonPropertyName("threat")] string Threat,
+    [property: JsonPropertyName("time")] double Time);
+
+/// <summary>A threat as the maps draw it: one placed here and not sent, one shared by the
+/// coalition's controllers (<see cref="SharedId"/>), or an F10 mark that names a threat (sent
+/// from here — <see cref="Local"/> — by another controller, or by a player).
 /// <see cref="Removable"/>: a DCB mark, which controllers may remove.</summary>
-public sealed record ThreatView(ThreatType Type, double Lat, double Lon, long? MarkId, ThreatMarker? Local, bool Removable = false);
+public sealed record ThreatView(ThreatType Type, double Lat, double Lon, long? MarkId, ThreatMarker? Local, bool Removable = false, long? SharedId = null);
 
 /// <summary>The controller's triangulation board, shared by every map: RWR bearing lines, placed
 /// threats and the coalition's F10 marks. Not thread-safe: use from the UI thread.</summary>
@@ -166,11 +181,25 @@ public sealed class GciBoard
     public IReadOnlyList<ThreatMarker> Threats => _threats;
     public IReadOnlyList<F10Mark> Marks { get; private set; } = [];
 
+    /// <summary>Threats the coalition's controllers share (server), in DCS metres.</summary>
+    public IReadOnlyList<SharedThreat> Shared { get; private set; } = [];
+
+    /// <summary>DCS x/z → lat/lon (the theatre's; null while there is none): shared threats are
+    /// drawn only where it answers.</summary>
+    public Func<double, double, (double Lat, double Lon)?>? ToLatLon { get; set; }
+
+    public void ApplyShared(IReadOnlyList<SharedThreat> threats)
+    {
+        Shared = threats;
+        Changed?.Invoke();
+    }
+
     public event Action? Changed;
 
-    public BearingLine AddLine(long trackId, string label, double lat, double lon, double headingTrue, int clock, DateTime now)
+    public BearingLine AddLine(long trackId, string label, double lat, double lon, double bearingTrue, DateTime now,
+        double sigmaDeg = Triangulation.BearingSigmaDeg, string? emitter = null)
     {
-        var line = new BearingLine(_nextId++, trackId, label, lat, lon, BearingLine.BearingOf(headingTrue, clock), clock, now);
+        var line = new BearingLine(_nextId++, trackId, label, lat, lon, Nav.Normalize(bearingTrue), sigmaDeg, emitter, now);
         _lines.Add(line);
         Changed?.Invoke();
         return line;
@@ -229,6 +258,7 @@ public sealed class GciBoard
     public void ClearMarks()
     {
         Marks = [];
+        Shared = [];
         _threats.RemoveAll(t => t.MarkId is not null);
         Changed?.Invoke();
     }
@@ -248,6 +278,10 @@ public sealed class GciBoard
         // Unsent, or sent and not in the feed yet.
         foreach (var t in _threats.Where(t => t.MarkId is not { } id || !shown.Contains(id)))
             list.Add(new ThreatView(t.Type, t.Lat, t.Lon, t.MarkId, t, t.MarkId is not null));
+        if (ToLatLon is { } geo)
+            foreach (var s in Shared)
+                if (ThreatType.Find(s.Threat) is { } type && geo(s.X, s.Z) is var (lat, lon))
+                    list.Add(new ThreatView(type, lat, lon, null, null, true, s.Id));
         return list;
     }
 

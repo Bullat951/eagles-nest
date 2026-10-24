@@ -10,7 +10,11 @@ namespace Dcb.Client.Core;
 public sealed class Pavement
 {
     public const double Bucket = 2000;
-    private const string Class = "Runway", Shader = "Runway5.1";
+    private const string Class = "Runway";
+
+    /// <summary>The pavement geometry's shaders: Runway5.1 (Syria); OldRunway5.1 and Runway5.0
+    /// (Caucasus). Onlays (painted markings) and the coarse CaucasusSimple5.1 are left out.</summary>
+    private static readonly HashSet<string> Shaders = ["Runway5.1", "OldRunway5.1", "Runway5.0"];
 
     private readonly Dictionary<(int I, int J), float[]> _buckets;
 
@@ -30,13 +34,14 @@ public sealed class Pavement
             if (_buckets.TryGetValue((i, j), out var b)) yield return b;
     }
 
-    /// <summary>Reads every Runway5.1 mesh of the finest nodes (records and pools as in
+    /// <summary>Reads every pavement mesh of the finest nodes (records and pools as in
     /// <see cref="Surface5"/>; the edge strips around the pavement are part of it).</summary>
     public static Pavement Extract(string path, IProgress<double>? progress = null)
     {
         var (handle, dataBase, stream) = Surface5.Open(path);
         using var _ = handle;
         var spans = Surface5.Spans(stream, null);
+        var finest = Surface5.FinestWidth(stream);
         var buckets = new Dictionary<(int, int), List<float>>();
         var pending = new List<(Surface5.Attr BaseIndex, Surface5.Attr Tri)>();
         (double X, double Z)? translation = null;
@@ -44,12 +49,12 @@ public sealed class Pavement
         {
             var s = spans[k];
             var next = k + 1 < spans.Count ? spans[k + 1] : null;
-            if (s.BaseIndex is { } bi && s.Tri is { } tri && next is { Class: Class, Shader: Shader }) pending.Add((bi, tri));
+            if (s.BaseIndex is { } bi && s.Tri is { } tri && next is { Class: Class } && Shaders.Contains(next.Shader)) pending.Add((bi, tri));
             if (s.Pbase is not { } pb) continue;
             if (pending.Count > 0 && translation is { } t)
             {
                 var pool = Surface5.ReadFloats(handle, dataBase, pb);
-                if (Surface5.IsFinest(pool))
+                if (Surface5.IsFinest(pool, finest))
                     foreach (var (b, tr) in pending) Add(handle, dataBase, b, tr, pool, t, buckets);
             }
             pending.Clear();

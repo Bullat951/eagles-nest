@@ -58,23 +58,38 @@ public sealed class LandCover
         "Sea" => Class.Sea,
         "lake" or "Lake" => Class.Water,
         "Town" => Class.Town,
-        "Trees" => Class.Trees,
+        "Trees" or "Forest" => Class.Trees,  // Syria, Caucasus
         "field" or "Field" => Class.Field,
         "Beach" => Class.Beach,
         _ => Class.None,
     };
 
+    /// <summary>Every (shader, class) pair of a surface5 file with its record count and how many
+    /// of those records carry triangles (research aid: which shaders a terrain uses for a class).</summary>
+    public static List<(string Shader, string Class, int Records, int WithTriangles)> Census(string path)
+    {
+        var (handle, _, stream) = Surface5.Open(path);
+        using var _h = handle;
+        var spans = Surface5.Spans(stream, null);
+        // A record's arrays sit in the span before the next record, as in Extract.
+        return spans.Select((s, k) => (s.Shader, s.Class, Tri: k > 0 && spans[k - 1].Tri is not null))
+            .GroupBy(s => (s.Shader, s.Class))
+            .Select(g => (g.Key.Shader, g.Key.Class, g.Count(), g.Count(s => s.Tri)))
+            .OrderBy(g => g.Class).ThenByDescending(g => g.Item3).ToList();
+    }
+
     // ---- Extraction from surface5 ------------------------------------------------------------
 
-    private static readonly string[] Shaders = ["Surface5.0", "HardSplat5.2", "Splatmap5.1", "Simple5.1", "Sea5.1", "Lake5.1", "MeshAssetManifold5"];
-
     /// <summary>Rasterises the area classes of a surface5 file over the x/z box (format and the
-    /// record/pool rules: <see cref="Surface5"/>).</summary>
+    /// record/pool rules: <see cref="Surface5"/>). Every shader's records are read: terrains
+    /// draw the same class with different shaders (Caucasus: forest with CaucasusSimple5.1,
+    /// fields with Blend5.1 / SimpleOnlayArray5.1, towns with HardSplatArray5.1, sea with Sea5.0).</summary>
     public static LandCover Extract(string path, double x0, double z0, double x1, double z1, double cell, IProgress<double>? progress = null)
     {
         var (handle, dataBase, stream) = Surface5.Open(path);
         using var _ = handle;
-        var spans = Surface5.Spans(stream, Shaders);
+        var spans = Surface5.Spans(stream, null);
+        var finest = Surface5.FinestWidth(stream);
         int nx = (int)Math.Ceiling((x1 - x0) / cell), nz = (int)Math.Ceiling((z1 - z0) / cell);
         var cells = new byte[nx * nz];
         var pending = new List<(LandCover.Class Class, Surface5.Attr BaseIndex, Surface5.Attr Tri)>();
@@ -91,7 +106,7 @@ public sealed class LandCover
             if (pending.Count > 0 && translation is { } t)
             {
                 var pool = Surface5.ReadFloats(handle, dataBase, pb);
-                if (Surface5.IsFinest(pool))
+                if (Surface5.IsFinest(pool, finest))
                     foreach (var (c, b, tr) in pending)
                         Rasterise(handle, dataBase, b, tr, pool, t, c, cells, nx, nz, x0, z0, cell);
             }

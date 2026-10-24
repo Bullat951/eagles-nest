@@ -3,7 +3,7 @@ using SkiaSharp;
 
 namespace Dcb.Client.Map.Gpu;
 
-/// <summary>The triangulation board (AppState.Board): RWR bearing lines with their error wedges,
+/// <summary>The triangulation board (AppState.Board): RWR bearing lines with their error wedges (each line's own ±σ),
 /// the fix where an aircraft's lines cross (1σ ellipse), placed threats with their rings, and
 /// the coalition's F10 marks.</summary>
 public sealed class GciSk : MapLayer
@@ -28,6 +28,7 @@ public sealed class GciSk : MapLayer
     private static readonly float MarkLabelSize = MapStyle.Number("marks.label.size");
     private const double MarkLabelMaxUnitsPerDip = 900;
     private const double HitRadius = 12;
+    private static readonly SKColor NctrActiveInk = new(90, 170, 255);
 
     public SKColor Halo { get; set; } = SkPalette.HaloDark;
     public bool ShowMarks { get; set; } = true;
@@ -42,6 +43,7 @@ public sealed class GciSk : MapLayer
         foreach (var t in board.AllThreats(IsZoneLabel)) DrawThreat(canvas, view, area, t);
         foreach (var line in board.Lines) DrawLine(canvas, view, area, line, now);
         foreach (var (_, fix) in board.Fixes()) DrawFix(canvas, view, fix);
+        DrawNctr(canvas, view, area);
         if (ShowMarks)
             foreach (var m in board.VisibleMarks(IsZoneLabel)) DrawMark(canvas, view, m);
     }
@@ -67,7 +69,7 @@ public sealed class GciSk : MapLayer
         var opacity = age < FadeMinutes ? 1 : 0.4;
         var origin = SkDraw.ScreenLonLat(view, line.Lon, line.Lat);
         // The ±σ wedge, then the line itself (sampled so it follows the bearing on the Mercator map).
-        var sigma = Triangulation.BearingSigmaDeg;
+        var sigma = line.SigmaDeg;
         using (var wedge = new SKPath())
         {
             wedge.MoveTo(origin);
@@ -92,7 +94,8 @@ public sealed class GciSk : MapLayer
         }
         canvas.DrawCircle(origin, 3, Ink.Fill(pen.Color));
         if (!area.Contains(origin)) return;
-        var text = $"{line.Clock} o'c {line.Label} {line.Time.ToLocalTime():HH:mm}";
+        // "084° 6 Viper 1-1 14:02": the emitter's RWR label when it came from the scope's emitter.
+        var text = $"{line.BearingTrue:000}°{(line.Emitter is { } e ? " " + e : "")} {line.Label} {line.Time.ToLocalTime():HH:mm}";
         Text.Draw(canvas, text, origin.X + 6, origin.Y + 4, pen.Color, Ink.WithOpacity(Halo, opacity), LabelFace, LabelSize);
     }
 
@@ -120,6 +123,72 @@ public sealed class GciSk : MapLayer
         if (AppState.Store.Latest?.Bullseye is { } bulls) lines.Add(Nav.BullseyeCall(bulls, fix.Lat, fix.Lon, AppState.Store.Theatre?.MagVar));
         for (int i = 0; i < lines.Count; i++)
             Text.Draw(canvas, lines[i], c.X + 12, c.Y - 6 + i * (LabelSize + 3), FixInk, Halo, LabelFace, LabelSize);
+    }
+
+    /// <summary>NCTR: a running request's area (thin) and each radar's cone, with the seconds left; under each unidentified contact the
+    /// answers it got (newest request, one per method), e.g. "JEM Su-27 family · Size medium".</summary>
+    private void DrawNctr(SKCanvas canvas, MapView view, SKRect area)
+    {
+        var store = AppState.Store;
+        if (store.Nctr is not { } nctr || store.Theatre is not { } theatre) return;
+        foreach (var r in nctr.Requests.Where(r => r.Running && r.Area.Count == 4))
+        {
+            double x1 = r.Area[0], z1 = r.Area[1], x2 = r.Area[2], z2 = r.Area[3];
+            using var path = new SKPath();
+            // The x/z box traced edge by edge (it is not quite a rectangle on the Mercator map).
+            var corners = new[] { (x1, z1), (x2, z1), (x2, z2), (x1, z2), (x1, z1) };
+            for (int c = 0; c < 4; c++)
+                for (int k = 0; k <= 8; k++)
+                {
+                    var (ax, az) = corners[c];
+                    var (bx, bz) = corners[c + 1];
+                    var (lat, lon) = theatre.ToLatLon(ax + (bx - ax) * k / 8, az + (bz - az) * k / 8);
+                    var p = SkDraw.ScreenLonLat(view, lon, lat);
+                    if (c == 0 && k == 0) path.MoveTo(p); else path.LineTo(p);
+                }
+            canvas.DrawPath(path, Ink.Stroke(FixInk.WithAlpha(110), 1));
+            // Each radar's cone (DCS grid frame, so traced in x/z and converted point by point).
+            foreach (var cone in r.Cones ?? [])
+            {
+                using var wedge = new SKPath();
+                var (ol, oo) = theatre.ToLatLon(cone.X, cone.Z);
+                wedge.MoveTo(SkDraw.ScreenLonLat(view, oo, ol));
+                for (int k = 0; k <= 12; k++)
+                {
+                    var b = (cone.Center - cone.Half + 2 * cone.Half * k / 12) * Math.PI / 180;
+                    var (wl, wo) = theatre.ToLatLon(cone.X + Math.Cos(b) * cone.Range, cone.Z + Math.Sin(b) * cone.Range);
+                    wedge.LineTo(SkDraw.ScreenLonLat(view, wo, wl));
+                }
+                wedge.Close();
+                canvas.DrawPath(wedge, Ink.Fill(FixInk.WithAlpha(28)));
+                canvas.DrawPath(wedge, Ink.Stroke(FixInk, FixWidth));
+            }
+            var (tl, tn) = theatre.ToLatLon(Math.Max(x1, x2), Math.Min(z1, z2));
+            var label = SkDraw.ScreenLonLat(view, tn, tl);
+            Text.Draw(canvas, $"NCTR {string.Join("/", r.Methods.Select(NctrMethods.NameOf))} · {r.Left:0} s · {r.Radars} radar{(r.Radars == 1 ? "" : "s")}",
+                label.X + 4, label.Y - 6, FixInk, Halo, LabelFace, LabelSize);
+        }
+        // Methods being worked on a contact right now, in blue beside it, flashing (MapPanel
+        // redraws twice a second while a request runs).
+        if (DateTime.Now.Millisecond < 600)
+            foreach (var g in nctr.Requests.Where(r => r.Running).SelectMany(r => r.Results).Where(x => x.Active).GroupBy(x => x.Unit))
+            {
+                if (store.Find(g.Key)?.Unit is not { Lat: { } alat, Lon: { } alon }) continue;
+                var p = SkDraw.ScreenLonLat(view, alon, alat);
+                if (!area.Contains(p)) continue;
+                var methods = string.Join(" ", g.Select(x => NctrMethods.NameOf(x.Method).ToUpperInvariant()).Distinct());
+                Text.Draw(canvas, methods, p.X + 14, p.Y - 10, NctrActiveInk, Halo, Text.Face.Bold, LabelSize + 1);
+            }
+        var shown = new HashSet<long>(nctr.Requests.SelectMany(r => r.Results).Where(x => x.Status == "ok").Select(x => x.Unit));
+        foreach (var id in shown)
+        {
+            // An identified contact needs no answers under it (they stay in its Identify menu).
+            if (store.Find(id)?.Unit is not { Lat: { } lat, Lon: { } lon, Shown: null }) continue;
+            var p = SkDraw.ScreenLonLat(view, lon, lat);
+            if (!area.Contains(p)) continue;
+            var text = string.Join(" · ", store.NctrFor(id).Select(n => $"{NctrMethods.NameOf(n.Method)} {NctrMethods.LabelOf(n) ?? n.Result}"));
+            Text.DrawCentered(canvas, text, p.X, p.Y + 34, FixInk, Halo, LabelFace, LabelSize);
+        }
     }
 
     private void DrawThreat(SKCanvas canvas, MapView view, SKRect area, ThreatView t)

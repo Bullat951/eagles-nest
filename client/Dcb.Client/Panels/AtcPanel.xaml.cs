@@ -56,6 +56,7 @@ public partial class AtcPanel : UserControl
         Loaded += (_, _) =>
         {
             AppState.Store.AirfieldsChanged += Refresh;
+            AppState.Store.TheatreChanged += Refresh;  // a field remembered from before it came
             AppState.Store.Changed += Diagram.InvalidateVisual;
             AppState.Store.Changed += Approach.InvalidateVisual;
             AppState.Store.Changed += CarrierView.InvalidateVisual;
@@ -70,6 +71,7 @@ public partial class AtcPanel : UserControl
         Unloaded += (_, _) =>
         {
             AppState.Store.AirfieldsChanged -= Refresh;
+            AppState.Store.TheatreChanged -= Refresh;
             AppState.Store.Changed -= Diagram.InvalidateVisual;
             AppState.Store.Changed -= Approach.InvalidateVisual;
             AppState.Store.Changed -= CarrierView.InvalidateVisual;
@@ -175,7 +177,7 @@ public partial class AtcPanel : UserControl
         AppState.SelectAirfield(row.Id);
         var tower = ChartLabels.TowerFor(field) is { } t ? $" · tower {t}" : "";
         FieldText.Text = $"{row.Name} · {row.Owner} · {row.RunwaysText} · {row.ParkingCount} parking{tower}";
-        if (Diagram.Field?.Id != row.Id)
+        if (!Diagram.Shows(field))
         {
             Diagram.Show(field, ChartLabels.For(field));
             Approach.Show(field);

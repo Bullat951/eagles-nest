@@ -117,6 +117,58 @@ public sealed class PictureStore
     /// <summary>Raised after each LSO frame.</summary>
     public event Action? LsoChanged;
 
+    /// <summary>The latest RWR / ESM picture (every second).</summary>
+    public RwrMessage? Rwr { get; private set; }
+
+    /// <summary>Raised after each RWR picture.</summary>
+    public event Action? RwrChanged;
+
+    public void ApplyRwr(RwrMessage m)
+    {
+        Rwr = m;
+        RwrChanged?.Invoke();
+    }
+
+    /// <summary>The coalition's NCTR requests and results (latest message).</summary>
+    public NctrMessage? Nctr { get; private set; }
+    public event Action? NctrChanged;
+
+    public void ApplyNctr(NctrMessage m)
+    {
+        Nctr = m;
+        NctrChanged?.Invoke();
+    }
+
+    /// <summary>The NCTR answers for a contact, newest request first, one per method.</summary>
+    public IReadOnlyList<NctrResult> NctrFor(long unitId) =>
+        (Nctr?.Requests ?? []).OrderByDescending(r => r.Id)
+            .SelectMany(r => r.Results.Where(x => x.Unit == unitId && x.Status == "ok"))
+            .GroupBy(x => x.Method).Select(g => g.First()).ToList();
+
+    private Dictionary<long, string> _ids = [];
+
+    /// <summary>The server's identification mode ("manual": contacts carry no type), from the ids channel.</summary>
+    public string IdentificationMode { get; private set; } = "auto";
+
+    /// <summary>The coalition's identities (contact id → label), shared by its controllers.</summary>
+    public IReadOnlyDictionary<long, string> Identities => _ids;
+
+    public void ApplyIds(IdsMessage m)
+    {
+        IdentificationMode = m.Mode;
+        _ids = m.Ids.ToDictionary(i => i.Unit, i => i.Label);
+        foreach (var t in _tracks.Values.Where(t => t.Unit.Detected))
+        {
+            var label = _ids.GetValueOrDefault(t.Unit.Id);
+            if (t.Unit.Assigned != label) t.Unit = t.Unit with { Assigned = label };
+        }
+        Changed?.Invoke();
+    }
+
+    /// <summary>What one own unit's receiver hears in the latest RWR picture (empty when nothing).</summary>
+    public IReadOnlyList<RwrEmitter> RwrFor(long unitId) =>
+        Rwr?.Receivers.FirstOrDefault(r => r.Id == unitId)?.Emitters ?? [];
+
     public PictureStore()
     {
         Passes = new PassTracker
@@ -161,8 +213,9 @@ public sealed class PictureStore
         Coalition = coalition;
         Latest = picture;
         var seen = new HashSet<long>();
-        foreach (var u in picture.Units)
+        foreach (var raw in picture.Units)
         {
+            var u = raw.Detected && _ids.TryGetValue(raw.Id, out var label) ? raw with { Assigned = label } : raw;
             seen.Add(u.Id);
             if (_tracks.TryGetValue(u.Id, out var t))
             {

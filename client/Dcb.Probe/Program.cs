@@ -70,6 +70,16 @@ if (args.Length == 5 && args[0] == "--signs")
     return 0;
 }
 
+if (args.Length == 2 && args[0] == "--census")
+{
+    // --census <terrain.surface5>: every shader/class pair with its record count.
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var rows = LandCover.Census(args[1]);
+    Console.WriteLine($"{rows.Count} shader/class pairs in {sw.Elapsed.TotalSeconds:F1} s");
+    foreach (var r in rows) Console.WriteLine($"  {r.Class,-20} {r.Shader,-26} {r.Records,8} records {r.WithTriangles,8} with triangles");
+    return 0;
+}
+
 if (args.Length == 8 && args[0] == "--landcover")
 {
     // --landcover <terrain.surface5> <x0> <z0> <x1> <z1> <cell m> <out.png>: extract, time, picture.

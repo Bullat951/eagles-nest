@@ -143,8 +143,10 @@ User asked for DCS maps and for the view to stay inside the DCS theatre; both ma
 DCS map coordinates (x north, z east, metres) are a per-terrain transverse Mercator. The
 server sends a **control grid**: lat/lon of an N×N grid of x/z points over the theatre
 bounds, computed with `coord.LOtoLL`. The client converts any x/z by bilinear interpolation
-in that grid (sub-100 m error at 21×21 over Caucasus). Terrain-agnostic, no projection
-constants in the client.
+in that grid. Terrain-agnostic, no projection constants in the client. Grid size 81×81
+(2026-10-23): 21×21 was 5–12 m off on Syria but 30–140 m on Caucasus, which lies ~9° from
+its central meridian (aircraft drawn beside the runway in the airfield views); 81×81 is
+≤ 8 m everywhere, for a ~130 KB theatre message once per mission.
 
 ### Server
 - Hook reads `Terrain.GetTerrainConfig('id' | 'SW_bound' | 'NE_bound')` (as the Mission

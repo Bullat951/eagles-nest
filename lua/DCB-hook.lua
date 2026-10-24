@@ -6,6 +6,13 @@ local DCB = {
     root = lfs.writedir() .. "Mods\\Services\\DCB\\",
     cfg = { port = 10309, blue_password = "", red_password = "", interval = 1.0, terrain_step = 2000, dev_probe = false,
             analytics = true, export = true,
+            -- RWR / ESM picture per coalition (receiver -> emitters heard), computed every interval
+            rwr = true,
+            -- "auto": contacts carry their type once DCS identifies them; "manual": never, the
+            -- controllers identify them (RWR emitters, "identify" command, shared per coalition)
+            identification = "auto",
+            -- NCTR (JEM, HRRP, ISAR, rotor) only in missions dated this year or later
+            nctr_year = 1985,
             -- Enemy ground units in the picture when own radars see them: true, false, or "auto"
             -- (only in missions dated enemy_ground_year or later: modern AWACS/JSTARS-era sensors).
             -- Otherwise ground threats are found by RWR triangulation.
@@ -24,13 +31,20 @@ local DCB = {
     airfields = { next = 0, last = nil },
     weather = { next = 0 },
     marks = { next = 0, last = {} },  -- F10 marks per side: last published line
+    -- identities per side: unit id -> { label, time }
+    ids = { next = 0, sides = { blue = {}, red = {} }, dirty = {}, sent = {} },
+    -- shared threats per side: id -> { x, z, threat, time }
+    threats = { nextId = 1, sides = { blue = {}, red = {} }, dirty = {}, sent = {} },
+    nctrLast = {},  -- last published NCTR line per side
 }
 
 local FOOTHOLD_INTERVAL = 10  -- seconds between Foothold zone snapshots
 local AIRFIELDS_INTERVAL = 60 -- seconds between airfield owner checks
 local WEATHER_INTERVAL = 60   -- seconds between weather (ATIS) snapshots
 
-local GEO_GRID = 21          -- control grid size for x/z -> lat/lon on the client
+-- Control grid size for x/z -> lat/lon on the client. 21 was off by 30-140 m over Caucasus
+-- (9° from its central meridian: aircraft beside the runway); 81 keeps it under ~8 m (~130 KB once).
+local GEO_GRID = 81
 local TERRAIN_BUDGET = 0.004 -- seconds of sim-thread time per frame for terrain sampling
 
 local function dcbLog(msg)
@@ -192,8 +206,9 @@ local function collect()
             return
         end
         local eg = DCB.cfg.enemy_ground
-        net.dostring_in("server", string.format("DCB_settings = { enemyGround = %s, enemyGroundYear = %d }\n",
-            eg == true and "true" or eg == false and "false" or '"auto"', tonumber(DCB.cfg.enemy_ground_year) or 2012)
+        net.dostring_in("server", string.format("DCB_settings = { enemyGround = %s, enemyGroundYear = %d, identification = %q, nctrYear = %d }\n",
+            eg == true and "true" or eg == false and "false" or '"auto"', tonumber(DCB.cfg.enemy_ground_year) or 2012,
+            DCB.cfg.identification == "manual" and "manual" or "auto", tonumber(DCB.cfg.nctr_year) or 1985)
             .. DCB.collectorSource)
         dcbLog("collector injected")
         return
@@ -457,6 +472,114 @@ local function lsoTick()
     end
 end
 
+-- ---- RWR / ESM picture (coalition channels), every interval -------------------------------
+-- DCB_rwr() returns one JSON line per coalition (its receivers that hear an enemy emitter).
+-- Once a minute the pair counts are logged beside the timing line.
+
+local function rwrTick()
+    local result = net.dostring_in("server", "return DCB_rwr and DCB_rwr() or ''")
+    if type(result) ~= "string" then return end
+    if result:sub(1, 4) == "ERR:" then
+        reportError("rwr failed: " .. result)
+        return
+    end
+    for line in result:gmatch("[^\n]+") do
+        local side = line:match('"coalition":"(%a+)"')
+        if side then dcb.publish_side(side, "rwr", line) end
+    end
+    local now = DCS.getRealTime()
+    if now >= (DCB.rwrLog or 0) then
+        if DCB.rwrLog then
+            local stats = net.dostring_in("server", [[
+                local s = DCB_rwrStats
+                if not s or s.runs == 0 then return '' end
+                local line = string.format("rwr: %d runs, per run %.0f receivers, %.0f pairs, %.0f in range, %.1f LOS calls",
+                    s.runs, s.receivers / s.runs, s.pairs / s.runs, s.inRange / s.runs, s.los / s.runs)
+                s.runs, s.receivers, s.pairs, s.inRange, s.los = 0, 0, 0, 0, 0
+                return line]])
+            if type(stats) == "string" and stats ~= "" then dcbLog(stats) end
+        end
+        DCB.rwrLog = now + 60
+    end
+end
+
+-- ---- Identities (coalition channels): contacts the side's controllers identified ---------
+-- Set by the "identify" command; checked every 10 s (gone units drop out) and sent when they
+-- change, with the server's identification mode so clients know whether types are hidden.
+
+local IDS_INTERVAL = 10
+
+local function idsTick()
+    local ids = DCB.ids
+    local now = DCS.getRealTime()
+    if now < ids.next then return end
+    ids.next = now + IDS_INTERVAL
+    for _, sideName in ipairs({ "blue", "red" }) do
+        local side = ids.sides[sideName]
+        local list = {}
+        for unit in pairs(side) do list[#list + 1] = tostring(unit) end
+        if #list > 0 then
+            local alive = {}
+            local result = net.dostring_in("server", string.format("return DCB_identifyAlive(%q, %q)", table.concat(list, ","), sideName))
+            for id in tostring(result):gmatch("%d+") do alive[tonumber(id)] = true end
+            for unit in pairs(side) do
+                if not alive[unit] then
+                    side[unit] = nil
+                    ids.dirty[sideName] = true
+                end
+            end
+        end
+        if ids.dirty[sideName] or not ids.sent[sideName] then
+            local items = {}
+            for unit, e in pairs(side) do
+                items[#items + 1] = string.format('{"unit":%d,"label":"%s","time":%.1f}', unit, e.label, e.time)
+            end
+            dcb.publish_side(sideName, "ids", string.format('{"type":"ids","coalition":"%s","mode":"%s","ids":[%s]}',
+                sideName, DCB.cfg.identification == "manual" and "manual" or "auto", table.concat(items, ",")))
+            ids.dirty[sideName], ids.sent[sideName] = false, true
+        end
+    end
+end
+
+-- ---- Shared threats (coalition channels): threats the side's controllers placed ----------
+-- Not F10 marks (the pilots do not see them); sent to the side when they change and at once
+-- after a login (the DLL keeps the last line). Gone with the mission.
+
+local MAX_THREATS = 200
+
+local function threatsTick()
+    local th = DCB.threats
+    for _, sideName in ipairs({ "blue", "red" }) do
+        if th.dirty[sideName] or not th.sent[sideName] then
+            local items = {}
+            for id, t in pairs(th.sides[sideName]) do
+                items[#items + 1] = string.format('{"id":%d,"x":%d,"z":%d,"threat":"%s","time":%.1f}', id, t.x, t.z, t.threat, t.time)
+            end
+            dcb.publish_side(sideName, "threats", string.format('{"type":"threats","coalition":"%s","threats":[%s]}',
+                sideName, table.concat(items, ",")))
+            th.dirty[sideName], th.sent[sideName] = false, true
+        end
+    end
+end
+
+-- ---- NCTR (coalition channels): the side's requests and results, sent when they change ---
+
+local function nctrTick()
+    local result = net.dostring_in("server", "return DCB_nctr and DCB_nctr() or ''")
+    if type(result) ~= "string" or result == "" then return end
+    if result:sub(1, 4) == "ERR:" then
+        reportError("nctr failed: " .. result)
+        return
+    end
+    for line in result:gmatch("[^\n]+") do
+        local side = line:match('"coalition":"(%a+)"')
+        if side and DCB.nctrLast[side] ~= line then
+            DCB.nctrLast[side] = line
+            dcb.publish_side(side, "nctr", line)
+        end
+    end
+end
+
 -- ---- Controller commands ------------------------------------------------------------------
 -- Already checked by the DLL (known name, field limits, rate). Each runs a fixed function in
 -- the mission env with the controller's values as arguments (%q-quoted strings, %d numbers),
@@ -489,6 +612,43 @@ local function runCommand(cmd)
             "return tostring(pcall(a_set_carrier_illumination_mode, %d, %d))", cmd.unit, cmd.mode)))
         if result:sub(1, 4) == "true" then return true end
         return false, "lights not set: " .. result
+    end
+    if cmd.name == "nctr" then
+        local result = tostring(net.dostring_in("server", string.format("return DCB_nctrStart(%q, %d, %d, %d, %d, %q)",
+            cmd.coalition, cmd.x, cmd.z, cmd.x2, cmd.z2, cmd.text)))
+        local id = result:match("^ok:(%d+)$")
+        if id then return true, id end
+        return false, result
+    end
+    if cmd.name == "threat_add" then
+        local side = DCB.threats.sides[cmd.coalition]
+        local n = 0
+        for _ in pairs(side) do n = n + 1 end
+        if n >= MAX_THREATS then return false, "too many shared threats (" .. MAX_THREATS .. ")" end
+        local id = DCB.threats.nextId
+        DCB.threats.nextId = id + 1
+        side[id] = { x = cmd.x, z = cmd.z, threat = cmd.threat, time = DCS.getModelTime() }
+        DCB.threats.dirty[cmd.coalition] = true
+        threatsTick()
+        return true, tostring(id)
+    end
+    if cmd.name == "threat_remove" then
+        local side = DCB.threats.sides[cmd.coalition]
+        if not side[cmd.mark] then return false, "no such threat of your coalition" end
+        side[cmd.mark] = nil
+        DCB.threats.dirty[cmd.coalition] = true
+        threatsTick()
+        return true
+    end
+    if cmd.name == "identify" then
+        local check = tostring(net.dostring_in("server", string.format("return DCB_identifyCheck(%d, %q)", cmd.unit, cmd.coalition)))
+        if check ~= "ok" then return false, check end
+        local side = DCB.ids.sides[cmd.coalition]
+        local label = cmd.text:match("^%s*(.-)%s*$")
+        side[cmd.unit] = label ~= "" and { label = label, time = DCS.getModelTime() } or nil
+        DCB.ids.dirty[cmd.coalition] = true
+        DCB.ids.next = 0  -- to the side's controllers at once
+        return true
     end
     if cmd.name == "mark_remove" then
         local result = net.dostring_in("server", string.format("return DCB_markRemove(%d, %q)", cmd.mark, cmd.coalition))
@@ -708,6 +868,10 @@ function callbacks.onSimulationStart()
     DCB.airfields = { next = 0, last = nil }
     DCB.weather = { next = 0 }
     DCB.marks = { next = 0, last = {} }
+    DCB.ids = { next = 0, sides = { blue = {}, red = {} }, dirty = {}, sent = {} }
+    DCB.threats = { nextId = 1, sides = { blue = {}, red = {} }, dirty = {}, sent = {} }
+    DCB.nctrLast = {}
+    DCB.rwrLog = nil
 end
 
 function callbacks.onSimulationFrame()
@@ -745,6 +909,16 @@ function callbacks.onSimulationFrame()
         if not ok then reportError("analytics error: " .. tostring(err)) end
         ok, err = timed("marks", marksTick)
         if not ok then reportError("marks error: " .. tostring(err)) end
+        if DCB.cfg.rwr then
+            ok, err = timed("rwr", rwrTick)
+            if not ok then reportError("rwr error: " .. tostring(err)) end
+        end
+        ok, err = pcall(idsTick)
+        if not ok then reportError("ids error: " .. tostring(err)) end
+        ok, err = pcall(threatsTick)
+        if not ok then reportError("threats error: " .. tostring(err)) end
+        ok, err = timed("nctr", nctrTick)
+        if not ok then reportError("nctr error: " .. tostring(err)) end
     end
     if DCB.cfg.dev_probe and DCB.collectorReady then
         ok, err = pcall(runProbe)

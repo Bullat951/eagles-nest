@@ -22,3 +22,9 @@ app/
 
 # real server settings (controller passwords): only DCB.example.lua is in the repository
 server/config/DCB.lua
+
+# captured terrain maps (tools/MapCapture), ~1.8 GB each
+/maps/
+
+# prototype comparison images (contain DCS map textures and F10 screenshots)
+tools/SatPrototype/*.png

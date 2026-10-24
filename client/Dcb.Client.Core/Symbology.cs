@@ -13,11 +13,11 @@ public static class Symbology
     /// <summary>Vertical speed beyond which the block shows a climb/descent arrow (~500 ft/min).</summary>
     public const double TrendThresholdMps = 2.5;
 
-    /// <summary>Own side is friendly. A radar contact is hostile once DCS has identified its
-    /// type, unknown until then.</summary>
+    /// <summary>Own side is friendly. A radar contact is hostile once identified — its type from
+    /// DCS, or an identity from the coalition's controllers — unknown until then.</summary>
     public static Identity IdentityOf(Unit u, string ownCoalition) =>
         u.Coalition == ownCoalition && !u.Detected ? Identity.Friendly
-        : u.Type is null ? Identity.Unknown
+        : u.Shown is null ? Identity.Unknown
         : Identity.Hostile;
 
     public static SymbolKind KindOf(Unit u) => u.Category switch
@@ -59,13 +59,15 @@ public static class Symbology
         if (!IsAir(kind))
         {
             // Ground and ships: one line, type only; nothing for unidentified contacts.
-            return level == LabelLevel.Full && u.Type is not null ? [u.Type] : [];
+            return level == LabelLevel.Full && u.Shown is not null ? [u.Shown] : [];
         }
 
-        var altLine = $"{AltitudeHundreds(u)}{TrendOf(u)} {u.SpdKt ?? 0:0}";
+        // FRZ: not updated while the radars holding it run NCTR.
+        var altLine = $"{AltitudeHundreds(u)}{TrendOf(u)} {u.SpdKt ?? 0:0}{(u.Frozen ? " FRZ" : "")}";
         if (level == LabelLevel.Short) return [$"{AltitudeHundreds(u)}{TrendOf(u)}"];
 
-        var type = u.Type is null ? "UNK" : ShortType(u.Type);
+        // A DCS type shortened; a controller's identity as given ("29", "Su-34").
+        var type = u.Type is not null ? ShortType(u.Type) : u.Assigned ?? "UNK";
         var name = NameOf(u);
         return [name is null ? type : $"{name} {type}", altLine];
     }

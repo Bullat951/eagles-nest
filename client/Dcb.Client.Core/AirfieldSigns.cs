@@ -11,9 +11,10 @@ public sealed class AirfieldSigns : IDisposable
 {
     public enum Kind { Location, Direction, Runway, Tower }
 
-    /// <summary>Control tower models of airfields (Syria; city towers left out).</summary>
+    /// <summary>Control tower models of airfields (Syria, Caucasus; city towers left out).</summary>
     private static readonly HashSet<string> TowerModels =
-        ["kdp", "kdp_small", "atc_control_tower", "airport_building1_tower", "damascus_terminal_tower", "chukurova_tower", "nevatim_tower", "syria_tower"];
+        ["kdp", "kdp_small", "atc_control_tower", "airport_building1_tower", "damascus_terminal_tower", "chukurova_tower", "nevatim_tower", "syria_tower",
+         "kdp_big", "batumi_kdp", "airbase_airport_kdp_tbilisi", "airbase_kdp_tbilisi", "airbase_kdp2_tbilisi"];
 
     /// <summary>A placed sign: what it says and where it stands (DCS map metres).</summary>
     public readonly record struct Sign(Kind Kind, string Text, double X, double Z);
@@ -27,7 +28,24 @@ public sealed class AirfieldSigns : IDisposable
     private AirfieldSigns(SafeFileHandle handle, long dataBase, byte[] stream, List<(int, double, double)> nodes, Dictionary<int, (Kind, string)> signTypes)
     {
         (_handle, _dataBase, _stream, _nodes, _signTypes) = (handle, dataBase, stream, nodes, signTypes);
+        _reach = nodes.Select(n => Reach(n.Item2, n.Item3)).ToArray();
     }
+
+    /// <summary>How far a node's objects may lie from its translation. Tiles sit on a grid of
+    /// their size (Syria and Caucasus 512 m tiles; Caucasus also 16 km tiles, towers up to 8 km
+    /// out): the largest power of two dividing the translation, plus a quarter, at least 1 km.
+    /// A node off every grid (Caucasus has one near the origin holding Sukhumi's signs in
+    /// map coordinates) is always searched.</summary>
+    private static double Reach(double x, double z)
+    {
+        if (x != Math.Floor(x) || z != Math.Floor(z)) return double.PositiveInfinity;
+        long bits = (long)Math.Abs(x) | (long)Math.Abs(z);
+        if (bits == 0) return double.PositiveInfinity;
+        var grid = bits & -bits;  // lowest set bit: the largest power of two dividing both
+        return grid < 256 ? double.PositiveInfinity : Math.Max(1000, grid * 1.25);
+    }
+
+    private readonly double[] _reach;
 
     public int NodeCount => _nodes.Count;
 
@@ -78,6 +96,9 @@ public sealed class AirfieldSigns : IDisposable
             var s = names[i].ToLowerInvariant();
             if (s.Length == 7 && s.EndsWith("_black") && char.IsLetterOrDigit(s[0])) map[i] = (Kind.Location, s[..1].ToUpperInvariant());
             else if (s.Length == 8 && s.StartsWith("yellow_") && char.IsLetterOrDigit(s[7])) map[i] = (Kind.Direction, s[7..].ToUpperInvariant());
+            // Caucasus: "a_block" location board, "a_left" / "a_right" / "a_frwd" direction boards.
+            else if (s.Length == 7 && s.EndsWith("_block") && char.IsLetter(s[0])) map[i] = (Kind.Location, s[..1].ToUpperInvariant());
+            else if (s.Length >= 6 && s[1] == '_' && char.IsLetter(s[0]) && s[2..] is "left" or "right" or "frwd") map[i] = (Kind.Direction, s[..1].ToUpperInvariant());
             else if (s.StartsWith("course_")) map[i] = (Kind.Runway, s[7..] switch { "dash" => "-", var t => t.ToUpperInvariant() });
             else if (TowerModels.Contains(s)) map[i] = (Kind.Tower, s);
         }
@@ -113,15 +134,15 @@ public sealed class AirfieldSigns : IDisposable
     private static readonly byte[] BlockTail = [4, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0x50, 0x02, 0x00, 0x0c];
     private static readonly byte[] TypeOptions = "TYPE_OPTIONS"u8.ToArray();
 
-    /// <summary>Signs placed within <paramref name="radius"/> m of a point (by node: nodes are
-    /// at most ~1 km across).</summary>
+    /// <summary>Signs placed within <paramref name="radius"/> m of a point (nodes picked by their
+    /// translation within the radius plus their <see cref="Reach"/>).</summary>
     public IReadOnlyList<Sign> Near(double x, double z, double radius)
     {
         var signs = new List<Sign>();
         for (int k = 0; k < _nodes.Count; k++)
         {
             var (start, tx, tz) = _nodes[k];
-            if (Math.Abs(tx - x) > radius + 1000 || Math.Abs(tz - z) > radius + 1000) continue;
+            if (Math.Abs(tx - x) > radius + _reach[k] || Math.Abs(tz - z) > radius + _reach[k]) continue;
             var end = k + 1 < _nodes.Count ? _nodes[k + 1].Offset : _stream.Length;
             var node = _stream.AsSpan(start, end - start);
             for (int at = 0; ;)

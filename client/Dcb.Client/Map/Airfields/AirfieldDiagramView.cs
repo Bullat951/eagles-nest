@@ -92,6 +92,11 @@ public sealed class AirfieldDiagramView : FrameworkElement
         $"scale {_scale:F3} fit {FitScale:F3} userView {_userView} letters {LetterSource} ({_taxiLabels.Count}) stands {_stands.Count} " +
         $"pavement {_pavement is not null} network {_network.Count} beacons {_beacons.Count} tower {_tower is not null}";
 
+    /// <summary>True when the field is drawn on the theatre now loaded. A field picked before the
+    /// theatre arrived (or before the server changed map) is not: show it again then.</summary>
+    public bool Shows(Airfield field) =>
+        _field?.Id == field.Id && _frame is not null && ReferenceEquals(_theatre, AppState.Store.Theatre);
+
     /// <summary>Shows an airfield, fitted to the plan frame.</summary>
     public void Show(Airfield field, IReadOnlyList<DiagramLabel>? labels = null)
     {
@@ -102,7 +107,7 @@ public sealed class AirfieldDiagramView : FrameworkElement
         var id = _theatre.Id;
         var (ox, oz) = field.Runways.Count > 0 ? (field.Runways.Average(r => r.X), field.Runways.Average(r => r.Z)) : (field.X, field.Z);
         _frame = new LocalFrame(_theatre, ox, oz);
-        var graph = DcsAirfieldData.GraphFor(id, field.Name);
+        var graph = DcsAirfieldData.GraphFor(id, field.Name, ox, oz);
         _extent = Extent(field, graph);
         _pavement = BuildPavement(id, ox, oz);
         _network = BuildNetwork(graph);
@@ -759,7 +764,7 @@ public sealed class AirfieldDiagramView : FrameworkElement
                     dc.DrawLine(new Pen(brush, 1.5), p, new Point(p.X + Math.Sin(rad) * 16, p.Y - Math.Cos(rad) * 16));
                 }
                 dc.DrawEllipse(brush, new Pen(Paper, 1), p, 5, 5);
-                var name = Symbology.NameOf(u) ?? (u.Type is null ? "UNK" : Symbology.ShortType(u.Type));
+                var name = Symbology.NameOf(u) ?? (u.Type is null ? u.Assigned ?? "UNK" : Symbology.ShortType(u.Type));
                 var line2 = $"{(u.Type is null ? "" : Symbology.ShortType(u.Type))} {u.SpdKt ?? 0:0}KT";
                 Map.Labels.Draw(dc, name, new Point(p.X + 8, p.Y - 14), brush, HaloLight, 11, Map.Labels.Font.Bold, dpi);
                 Map.Labels.Draw(dc, line2, new Point(p.X + 8, p.Y - 1), brush, HaloLight, 10, Map.Labels.Font.Regular, dpi);

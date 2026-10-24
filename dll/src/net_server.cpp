@@ -7,6 +7,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <list>
 
@@ -196,6 +197,49 @@ std::string parseCommand(const std::string& line, Command& cmd) {
         if (!extractJsonInteger(line, "unit", cmd.unit) || cmd.unit <= 0) return "unit: a DCS unit id";
         if (!extractJsonInteger(line, "mode", mode) || mode < -2 || mode > 2) return "mode: -2 to 2";
         cmd.mode = static_cast<int>(mode);
+        return {};
+    }
+    if (cmd.name == "threat_add") {
+        // A threat the controller placed, shared with the coalition's controllers (not an F10
+        // mark): a threat type at a map point. The hook answers with its id.
+        if (!extractJsonInteger(line, "x", cmd.x) || !extractJsonInteger(line, "z", cmd.z) ||
+            cmd.x < -2000000 || cmd.x > 2000000 || cmd.z < -2000000 || cmd.z > 2000000)
+            return "x, z: DCS map metres";
+        if (!extractJsonString(line, "threat", cmd.threat) || cmd.threat.empty()) return "threat missing";
+        if (cmd.threat.size() > 24) return "threat: at most 24 characters";
+        for (char ch : cmd.threat)
+            if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != ' ' && ch != '/')
+                return "threat: letters, digits, '-', '/' and spaces only";
+        return {};
+    }
+    if (cmd.name == "nctr") {
+        // NCTR on the contacts in an area (two corners, DCS metres, at most 400 km a side) with
+        // the methods named in "methods" ("jem,hrrp,isar,size,rotor"), kept in cmd.text.
+        auto inMap = [](int64_t v) { return v >= -2000000 && v <= 2000000; };
+        if (!extractJsonInteger(line, "x", cmd.x) || !extractJsonInteger(line, "z", cmd.z) ||
+            !extractJsonInteger(line, "x2", cmd.x2) || !extractJsonInteger(line, "z2", cmd.z2) ||
+            !inMap(cmd.x) || !inMap(cmd.z) || !inMap(cmd.x2) || !inMap(cmd.z2))
+            return "x, z, x2, z2: DCS map metres";
+        if (std::llabs(cmd.x2 - cmd.x) > 400000 || std::llabs(cmd.z2 - cmd.z) > 400000) return "area: at most 400 km a side";
+        if (!extractJsonString(line, "methods", cmd.text) || cmd.text.empty()) return "methods missing";
+        if (cmd.text.size() > 40) return "methods: at most 40 characters";
+        for (char ch : cmd.text)
+            if (!(ch >= 'a' && ch <= 'z') && ch != ',') return "methods: lower-case names separated by commas";
+        return {};
+    }
+    if (cmd.name == "threat_remove") {
+        if (!extractJsonInteger(line, "threat_id", cmd.mark) || cmd.mark <= 0) return "threat_id: a shared threat id";
+        return {};
+    }
+    if (cmd.name == "identify") {
+        // An identity for an enemy contact, shared with the coalition's controllers: an RWR
+        // label or type name ("29", "SA-6", "Su-34"); empty clears it. Kept in cmd.text.
+        if (!extractJsonInteger(line, "unit", cmd.unit) || cmd.unit <= 0) return "unit: a DCS unit id";
+        if (!extractJsonString(line, "label", cmd.text)) return "label missing";
+        if (cmd.text.size() > 24) return "label: at most 24 characters";
+        for (char ch : cmd.text)
+            if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != ' ' && ch != '/')
+                return "label: letters, digits, '-', '/' and spaces only";
         return {};
     }
     return "unknown command";

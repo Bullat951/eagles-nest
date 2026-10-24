@@ -181,14 +181,43 @@ internal static class Surface5
         return u;
     }
 
-    /// <summary>The file also holds coarser levels of detail (nodes 16 km to 512 km across) that
-    /// repeat the fine areas with simplified outlines. Only the finest nodes (8 km, vertices
-    /// within ~7.7 km of the centre with skirts) are used; coarser ones reach 8.2 km and more
-    /// along x.</summary>
-    public static bool IsFinest(float[] pool)
+    /// <summary>The widest node of the finest level of detail, from the node bboxes after the
+    /// matrices of the entry stream. Levels double in size and the finest differs per terrain
+    /// (Syria 8–14 km wide with skirts, then 17 km and up; Caucasus 17–26 km, then 29 km and
+    /// up): from the narrowest 1 % up to the first gap of over 1 km between node widths.</summary>
+    public static double FinestWidth(byte[] stream)
     {
-        for (int i = 0; i < pool.Length; i += 3)
-            if (Math.Abs(pool[i]) >= 8000) return false;
-        return true;
+        var widths = new List<float>();
+        for (int at = 0; ;)
+        {
+            var i = stream.AsSpan(at).IndexOf(IdentityRotation);
+            if (i < 0) break;
+            var p = at + i;
+            at = p + IdentityRotation.Length;
+            if (p + 64 + 24 > stream.Length) break;
+            float x0 = BitConverter.ToSingle(stream, p + 64), z0 = BitConverter.ToSingle(stream, p + 72);
+            float x1 = BitConverter.ToSingle(stream, p + 76), z1 = BitConverter.ToSingle(stream, p + 84);
+            var w = Math.Max(x1 - x0, z1 - z0);
+            if (w is > 1000 and < 2_000_000) widths.Add(w);
+        }
+        if (widths.Count == 0) return 16000;  // the old fixed rule: vertices within 8 km
+        widths.Sort();
+        var narrow = widths[widths.Count / 100];
+        for (int i = widths.Count / 100; i + 1 < widths.Count && widths[i] < narrow * 2.2; i++)
+            if (widths[i + 1] - widths[i] > 1000) return widths[i] + 1;
+        return narrow * 1.6;
+    }
+
+    /// <summary>The file also holds coarser levels of detail that repeat the fine areas with
+    /// simplified outlines: only pools of the finest level (<see cref="FinestWidth"/>) are used.</summary>
+    public static bool IsFinest(float[] pool, double finestWidth)
+    {
+        float x0 = float.MaxValue, z0 = float.MaxValue, x1 = float.MinValue, z1 = float.MinValue;
+        for (int i = 0; i + 2 < pool.Length; i += 3)
+        {
+            x0 = Math.Min(x0, pool[i]); x1 = Math.Max(x1, pool[i]);
+            z0 = Math.Min(z0, pool[i + 2]); z1 = Math.Max(z1, pool[i + 2]);
+        }
+        return Math.Max(x1 - x0, z1 - z0) <= finestWidth;
     }
 }

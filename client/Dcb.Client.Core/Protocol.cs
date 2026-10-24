@@ -85,6 +85,31 @@ public sealed record LsoAircraft(
     [property: JsonPropertyName("gear")] double? Gear,
     [property: JsonPropertyName("hook")] double? Hook);
 
+/// <summary>The RWR / ESM picture (every second, own coalition only): for each own receiver
+/// (aircraft with an RWR, ship or ground radar with ESM) the enemy emitters it hears.</summary>
+public sealed record RwrMessage(
+    [property: JsonPropertyName("coalition")] string Coalition,
+    [property: JsonPropertyName("time")] double Time,
+    [property: JsonPropertyName("receivers")] IReadOnlyList<RwrReceiver> Receivers);
+
+/// <summary>An own unit (<c>Id</c> as in the picture) and what its receiver hears.</summary>
+public sealed record RwrReceiver(
+    [property: JsonPropertyName("id")] long Id,
+    [property: JsonPropertyName("emitters")] IReadOnlyList<RwrEmitter> Emitters);
+
+/// <summary>An emitter as a receiver hears it. <c>Key</c> stays the same for one emitter across
+/// updates and receivers but is not its unit id. <c>Bearing</c> (degrees from grid north, like
+/// the picture's headings) is off by up to ±<c>Err</c>; <c>Mode</c> is search, track (tracking
+/// this receiver) or launch (guiding a missile at it); <c>Level</c> 0..1 grows as it gets closer.</summary>
+public sealed record RwrEmitter(
+    [property: JsonPropertyName("key")] long Key,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("cat")] string Category,
+    [property: JsonPropertyName("bearing")] double Bearing,
+    [property: JsonPropertyName("err")] double Err,
+    [property: JsonPropertyName("mode")] string Mode,
+    [property: JsonPropertyName("level")] double Level);
+
 /// <summary>A missile in flight: the picture's own coalition's, or an enemy one aimed at one of
 /// its units (then without type or shooter). <c>Id</c> is the server's own missile number, not
 /// a unit id; <c>Shooter</c> and <c>Target</c> are unit ids.</summary>
@@ -133,4 +158,26 @@ public sealed record Unit(
 
     public double? AltFt => Alt * FeetPerMeter;
     public double? SpdKt => Spd * KnotsPerMps;
+
+    /// <summary>A contact the radars holding it do not update while they run NCTR (last position).</summary>
+    [JsonPropertyName("frozen")] public bool Frozen { get; init; }
+
+    /// <summary>A contact's identity as the coalition's controllers set it ("29", "SA-6"); not
+    /// from the server's picture but from the ids channel (<see cref="PictureStore"/>).</summary>
+    [JsonIgnore] public string? Assigned { get; init; }
+
+    /// <summary>What to call it: the DCS type when the server gives one, else the identity.</summary>
+    [JsonIgnore] public string? Shown => Type ?? Assigned;
 }
+
+/// <summary>The contacts a coalition's controllers identified (command "identify"), and the
+/// server's identification mode: "manual" (contacts carry no type) or "auto".</summary>
+public sealed record IdsMessage(
+    [property: JsonPropertyName("coalition")] string Coalition,
+    [property: JsonPropertyName("mode")] string Mode,
+    [property: JsonPropertyName("ids")] IReadOnlyList<ContactIdentity> Ids);
+
+public sealed record ContactIdentity(
+    [property: JsonPropertyName("unit")] long Unit,
+    [property: JsonPropertyName("label")] string Label,
+    [property: JsonPropertyName("time")] double Time);

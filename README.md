@@ -5,13 +5,38 @@
 Controllers connect from their own PC to a DCS server and get a live, fog-of-war picture of
 their coalition: radar contacts, own flights, missiles, carriers and airfields. On top of that
 come the tools to run the air war and the traffic around the bases: bullseye and BRAA calls,
-RWR triangulation of SAM sites, airport diagrams, approach and carrier views, SRS radio
-integration, and F10 map marks shared with the pilots.
+the RWR picture of every own aircraft, contact identification with NCTR, triangulation of SAM
+sites, airport diagrams, approach and carrier views, SRS radio integration, and F10 map marks
+shared with the pilots.
 
 ![GCI workspace](docs/images/gci-workspace.png)
 
 > Working name. Inside the code, files and protocol the project is still called **DCB**
 > (`dcb.dll`, `DCB-hook.lua`, `Config\DCB.lua`).
+
+---
+
+## What makes it different
+
+- **The server decides what each side sees.** The picture is built on the DCS server from your
+  coalition's own sensors and sent to that coalition only. An enemy aircraft no radar of yours
+  holds never leaves the server, so no client can show more than the side really knows.
+- **Identification is earned, not given.** In manual mode contacts arrive as "UNK". Controllers
+  work out what they are from the **RWR picture of every own aircraft, ship and radar**
+  (computed on the server for AI and players alike, with bearing errors and line of sight) and
+  from **NCTR** on request — JEM, HRRP, ISAR, size class, rotor modulation and raid count, each
+  with its own range, aspect and dwell rules. A radar doing NCTR looks along a cone; what it
+  holds elsewhere freezes until it is done. You decide the identity; it turns the contact red.
+- **One team picture.** Identities and placed threats are shared by every controller of the
+  coalition; F10 marks carry threats to the pilots and bring theirs back as threat rings.
+- **Built from DCS itself.** Maps, airport diagrams, taxiway letters, signs and DCS Satellite
+  imagery come from the controller's own DCS install — on Syria and Caucasus alike — not from a
+  tile server.
+- **ATC and carrier ops, not only GCI.** Runway queues, 10 NM approach, marshal, Case I/II/III,
+  carrier lighting control and graded LSO passes, alongside SRS integration.
+- **Light on the server.** Measured on a busy Foothold mission (Caucasus, ~250 units, 5 blue and
+  18 red radars): about **6 ms of sim-thread time per second (0.6 %)** for everything —
+  picture 2.3 ms, RWR 2.0 ms, F10 marks 1.2 ms, Foothold 0.3 ms, NCTR 0.1 ms.
 
 ---
 
@@ -36,16 +61,26 @@ Pilots need nothing: they fly as usual and hear the controller on SRS.
 - Bullseye call under the cursor, right-drag ruler with bearing / range / BRAA, coordinates in DDM, DMS, MGRS.
 - Packages (four colour-coded groups), Foothold campaign zones, credits and mission board.
 
-**RWR triangulation and F10 marks**
-- A pilot's "spiked, 3 o'clock" becomes a bearing line on a radial clock; two or more lines give a fix with its error ellipse.
-- Place a threat (SA-2 … SA-19, AAA, Patriot …) and its engagement ring appears for every controller.
+**RWR, identification and NCTR**
+- **R** over an own unit opens its RWR scope: the emitters it hears, live, labelled and coloured by search / track / launch. Click one for a bearing line, or any azimuth for a pilot's call; two or more lines give a fix with its error ellipse.
+- Right-click a contact → *Identify as*: NCTR answers and the RWR emitters whose bearings cross it come first.
+- **N** + drag a box: NCTR by your AI radars (JEM, HRRP, ISAR, size, rotor, raid), with cones on the map, the methods being worked flashing beside each contact and the answer or the nearest miss.
+- Server setting `identification = "manual"`: contacts carry no type until a controller identifies them.
+
+| | |
+|---|---|
+| ![RWR scope](docs/images/rwr-scope.png) | ![NCTR](docs/images/nctr-cones.png) |
+| RWR scope with a bearing line through an identified pair | NCTR: two carriers' cones on a contact |
+
+**Threats and F10 marks**
+- Place a threat (SA-2 … SA-19, AAA, Patriot …) and its engagement ring appears for every controller of your side.
 - Threats go to the pilots as F10 map marks; any mark a pilot types that names a threat ("SA-11 near the dam") shows up as a ring too.
 - Whether enemy ground units appear on radar at all depends on the mission's era (server setting).
 
 | | |
 |---|---|
 | ![Triangulation](docs/images/triangulation.png) | ![DCS Map](docs/images/dcs-map.png) |
-| RWR bearing lines, fix and threat ring | DCS Map base map from the controller's own DCS install |
+| Bearing lines, fix and threat ring | DCS Map base map from the controller's own DCS install |
 
 **ATC**
 - Airport diagrams drawn from DCS data: runways, taxiway letters, stands, navaids, tower, in feet.
@@ -87,7 +122,8 @@ Then read the **[Operations manual](docs/MANUAL.md)**.
 
 | | |
 |---|---|
-| [Operations manual](docs/MANUAL.md) | how to control with Eagle's Nest: maps, keys, GCI, triangulation, ATC, carrier, SRS |
+| [Operations manual](docs/MANUAL.md) | how to control with Eagle's Nest: maps, keys, GCI, RWR, identification, NCTR, ATC, carrier, SRS |
+| [Identification design](docs/RESEARCH-IDENTIFICATION.md) | RWR / ESM, NCTR rules, measurements on the test server |
 | [Protocol](docs/PROTOCOL.md) | the server ↔ client messages and commands |
 | [Analytics and website export](docs/ANALYTICS.md) | what the server records and exports |
 | [Development](docs/DEVELOPMENT.md) | building, the test server, project layout, test tools |

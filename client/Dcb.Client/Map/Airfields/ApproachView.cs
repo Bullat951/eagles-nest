@@ -235,7 +235,7 @@ public sealed class ApproachView : FrameworkElement
                 dc.DrawLine(new Pen(k.Brush, 1.3), p, new Point(p.X + Math.Sin(rad) * lead, p.Y - Math.Cos(rad) * lead));
             }
             dc.DrawEllipse(k.Brush, null, p, 4.5, 4.5);
-            var name = Symbology.NameOf(k.Unit) ?? (k.Unit.Type is null ? "UNK" : Symbology.ShortType(k.Unit.Type));
+            var name = Symbology.NameOf(k.Unit) ?? (k.Unit.Type is null ? k.Unit.Assigned ?? "UNK" : Symbology.ShortType(k.Unit.Type));
             Label(dc, name, p + new Vec(8, -16), k.Brush, 11, dpi, bold: true);
             var line2 = $"{k.AltFt / 100:000}  {k.Unit.SpdKt ?? 0:0}KT  {k.RangeNm:0.0}NM";
             if (k.AboveFt is { } above) line2 += $"  {(above >= 0 ? "+" : "")}{Math.Round(above / 10) * 10:0}";

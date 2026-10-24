@@ -301,13 +301,34 @@ public sealed class DcsSatelliteSk : MapLayer
         ClipmapFile.LevelsLoaded += Invalidate;
     }
 
+    private static (string Id, string Text)? _missing;
+
+    /// <summary>Why there is no imagery: no install with the terrain, or neither clipmaps nor
+    /// a land texture in it.</summary>
+    private static string MissingNote(string terrainId)
+    {
+        if (_missing is { } m && m.Id == terrainId) return m.Text;
+        var installed = Charts.DcsInstall.Find() is { } dcs && System.IO.Directory.Exists(System.IO.Path.Combine(dcs, "Mods", "terrains", terrainId));
+        var text = installed
+            ? $"No DCS satellite imagery found for {terrainId}. Try the Satellite map (online)."
+            : $"No DCS satellite imagery for {terrainId} on this PC (DCS install with this terrain needed).";
+        _missing = (terrainId, text);
+        return text;
+    }
+
     public override void Draw(SKCanvas canvas, in MapFrame frame)
     {
         var view = frame.View;
         if (AppState.Store.Theatre is not { } theatre) return;
+        var captured = CapturedMap.For(theatre.Id);
         if (ClipmapIndex.For(theatre.Id) is not { } index)
         {
-            Text.Note(canvas, view, $"No DCS satellite imagery for {theatre.Id} on this PC (DCS install with this terrain needed).", light: false);
+            // Caucasus: the ground colour texture (F10 "Sat"), in the mission's season.
+            if (LandTextures.For(theatre.Id, LandTextures.SeasonOf(AppState.Store.Weather?.Date)) is { } land)
+                DrawLand(canvas, view, theatre, land, frame.PixelsPerDip);
+            else if (captured is null)
+                Text.Note(canvas, view, MissingNote(theatre.Id), light: false);
+            if (captured is not null) DrawCaptured(canvas, view, theatre, captured, frame.PixelsPerDip);
             return;
         }
         var groundPerPx = SkDraw.MetersPerDip(view, SkDraw.CenterLat(view)) / frame.PixelsPerDip;
@@ -324,6 +345,33 @@ public sealed class DcsSatelliteSk : MapLayer
                 drawn += DrawFile(canvas, view, theatre, file, Math.Max(0, level), area, MaxTilesPerResolution - drawn);
         }
         DrawWater(canvas, view, theatre);
+        if (captured is not null) DrawCaptured(canvas, view, theatre, captured, frame.PixelsPerDip);
+    }
+
+    /// <summary>The map captured from DCS's own Sat view, over the imagery DCB reads itself (it
+    /// covers what was captured; elsewhere the layers below show). A coarser level first, so a
+    /// tile still loading never leaves a hole.</summary>
+    private static void DrawCaptured(SKCanvas canvas, MapView view, Theatre theatre, CapturedMap map, float pixelsPerDip)
+    {
+        var groundPerPx = SkDraw.MetersPerDip(view, SkDraw.CenterLat(view)) / pixelsPerDip;
+        var level = Math.Clamp((int)Math.Floor(Math.Log2(Math.Max(1, groundPerPx))), map.FinestLevel, 10);
+        var area = DcsDraw.ViewArea(view, theatre);
+        foreach (var l in level + 2 <= 10 ? new[] { level + 2, level } : new[] { level })
+        {
+            var s = DcsMapTiles.TileMeters(l);
+            int tx0 = (int)Math.Floor(area.MinX / s), tx1 = (int)Math.Floor(area.MaxX / s);
+            int tz0 = (int)Math.Floor(area.MinZ / s), tz1 = (int)Math.Floor(area.MaxZ / s);
+            if ((long)(tx1 - tx0 + 1) * (tz1 - tz0 + 1) > 400) continue;
+            for (int tx = tx1; tx >= tx0; tx--)
+            for (int tz = tz0; tz <= tz1; tz++)
+            {
+                if (!map.Has(l, tx, tz)) continue;
+                int cl = l, cx = tx, cz = tz;
+                var key = map.Key(cl, cx, cz);
+                var image = l == level ? TileCache.Get(key, () => map.Load(cl, cx, cz)) : TileCache.Peek(key) ?? TileCache.Get(key, () => map.Load(cl, cx, cz));
+                if (image is not null) SkDraw.Warped(canvas, view, theatre, image, (tx + 1) * s, tz * s, s, s);
+            }
+        }
     }
 
     private void DrawWater(SKCanvas canvas, MapView view, Theatre theatre)
@@ -365,6 +413,35 @@ public sealed class DcsSatelliteSk : MapLayer
             blocks.Add((crop, g.X0 + (g.Nx - 1 - r0 + 0.5) * g.Step, g.Z0 + (c0 - 0.5) * g.Step, w * g.Step, h * g.Step));
         }
         return blocks;
+    }
+
+    /// <summary>The land texture: the coarse level wherever it has tiles (also under fine tiles
+    /// still loading), then the fine level once a fine pixel is under ~2 screen pixels.</summary>
+    private static void DrawLand(SKCanvas canvas, MapView view, Theatre theatre, LandTextures land, double pixelsPerDip)
+    {
+        var groundPerPx = SkDraw.MetersPerDip(view, SkDraw.CenterLat(view)) / pixelsPerDip;
+        var area = DcsDraw.ViewArea(view, theatre);
+        foreach (var level in land.Levels)
+        {
+            if (level != land.Levels[0] && groundPerPx > 2 * level.MetersPerPixel) continue;
+            int i0 = Math.Max(level.MinI, level.TileAtX(area.MinX)), i1 = Math.Min(level.MaxI, level.TileAtX(area.MaxX));
+            int j0 = Math.Max(level.MinJ, level.TileAtZ(area.MinZ)), j1 = Math.Min(level.MaxJ, level.TileAtZ(area.MaxZ));
+            var drawn = 0;
+            for (int i = i0; i <= i1; i++)
+            for (int j = j0; j <= j1; j++)
+            {
+                if (!land.Has(level, i, j)) continue;
+                if (++drawn > MaxTilesPerResolution) return;
+                int ti = i, tj = j;
+                if (TileCache.Get($"land:{land.Path}:{level.Name}:{i}:{j}", () => land.ReadTile(level, ti, tj)) is { } image)
+                {
+                    var (x, z, w, h) = level.Bounds(i, j);
+                    SkDraw.Axes(canvas, view, theatre, image, x, z, w, 0, 0, h);
+                }
+                else
+                    RenderStats.Count("DcsSatellite land tiles missing");
+            }
+        }
     }
 
     private static bool Overlaps(ClipmapFile f, (double MinX, double MinZ, double MaxX, double MaxZ) a) =>

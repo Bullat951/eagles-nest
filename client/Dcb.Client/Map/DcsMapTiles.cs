@@ -26,8 +26,10 @@ public sealed class DcsMapTiles
     // r2: soft land-cover edges below 100 m/px. r3: sea from DCS's surface grid + height.
     // r4: land cover from the finest surface5 nodes only (no shifted coarse copies).
     // r5/r6: lake fixes. r7: surface5 nodes placed with their own header's translation
-    // (were one node, mostly 8 km east, off).
-    private const string RenderVersion = "r7";
+    // (were one node, mostly 8 km east, off). r8: water swatch found by colour (Caucasus/PG
+    // palettes have black at class 8: black sea). r9: land cover from every shader (Caucasus
+    // forests, fields, towns).
+    private const string RenderVersion = "r9";
     // Reloading the road and area data costs ~0.75 s before the first close-up tile; at 30 s
     // every zoom after a short pause paid it.
     private static readonly TimeSpan ReleaseAfterIdle = TimeSpan.FromMinutes(5);

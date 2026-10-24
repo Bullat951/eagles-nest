@@ -28,7 +28,8 @@ public sealed record Theatre(
         .ToList();
 
     /// <summary>DCS map x/z → lat/lon by bilinear interpolation in the control grid. DCS maps
-    /// are transverse Mercator, smooth enough for sub-100 m error at the server's 21×21 grid.</summary>
+    /// are transverse Mercator: the server's 81×81 grid keeps the error under ~8 m even on
+    /// Caucasus (the 21×21 grid older servers send is off by up to ~140 m there).</summary>
     public (double Lat, double Lon) ToLatLon(double x, double z)
     {
         var n = Grid.N;
@@ -64,6 +65,16 @@ public sealed record Theatre(
             if (Math.Abs(dx) < 0.01 && Math.Abs(dz) < 0.01) break;
         }
         return (x, z);
+    }
+
+    /// <summary>Bearing of DCS grid north (+x) from true north at a point, degrees (meridian
+    /// convergence): add it to a grid bearing (headings, RWR bearings) to get a true one.</summary>
+    public double GridNorthAt(double lat, double lon)
+    {
+        var (x, z) = FromLatLon(lat, lon);
+        var (la0, lo0) = ToLatLon(x, z);
+        var (la1, lo1) = ToLatLon(x + 500, z);
+        return Math.Atan2((lo1 - lo0) * Math.Cos(la0 * Math.PI / 180), la1 - la0) * 180 / Math.PI;
     }
 
     /// <summary>Theatre border as lat/lon points, walking the x/z rectangle's edges.</summary>

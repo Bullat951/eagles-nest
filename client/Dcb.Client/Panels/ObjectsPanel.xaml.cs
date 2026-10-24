@@ -55,7 +55,7 @@ public sealed class TrackRow(long id) : INotifyPropertyChanged
         }
         Set(Kind, kind, v => Kind = v);
         Set(Name, Symbology.NameOf(u), v => Name = v);
-        Set(Type, u.Type, v => Type = v);
+        Set(Type, u.Shown, v => Type = v);
         Set(Altitude, Symbology.IsAir(kind) ? $"{Symbology.AltitudeHundreds(u)}{Symbology.TrendOf(u)}" : "", v => Altitude = v);
         Set(Hdg, u.Hdg, v => Hdg = v);
         Set(Speed, u.SpdKt, v => Speed = v);

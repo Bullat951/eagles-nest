@@ -288,6 +288,49 @@ public static class DebugSnapshot
                         await Task.Delay(TimeSpan.FromSeconds(6));  // the marks feed comes back within ~5 s
                         zoomReport.Add($"gci: marks {AppState.Board.Marks.Count}, dcb {AppState.Board.Marks.Count(m => m.Dcb)}, threats {AppState.Board.AllThreats().Count}");
                     }
+                    if (args.Length > 8 && args[8] == "nctr")
+                    {
+                        // NCTR on the first contact (small box) through the client's command path;
+                        // every second for 30 s: the contacts the store holds, frozen and lost ones.
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                        var store = AppState.Store;
+                        string State() => string.Join(" ", store.Tracks.Where(t => t.Unit.Detected).OrderBy(t => t.Unit.Id)
+                            .Select(t => $"{t.Unit.Id}{(t.Unit.Frozen ? "F" : "")}{(t.Lost ? "L" : "")}"));
+                        zoomReport.Add($"nctr: before {State()}");
+                        // The contact nearest one of our ships (carriers' radars can work it), else any.
+                        var ships = store.Tracks.Where(t => !t.Unit.Detected && t.Unit.Category == "ship" && t.Unit.Lat is not null).Select(t => t.Unit).ToList();
+                        double NearShip(Core.Track t) => ships.Count == 0 || t.Unit.Lat is not { } la || t.Unit.Lon is not { } lo ? 0
+                            : ships.Min(s => Core.Nav.BearingRange(s.Lat!.Value, s.Lon!.Value, la, lo).Meters);
+                        // DCB_NCTR_UNIT=<contact id> picks the contact (screenshots).
+                        var wanted = long.TryParse(Environment.GetEnvironmentVariable("DCB_NCTR_UNIT"), out var w) ? w : (long?)null;
+                        if (store.Tracks.Where(t => t.Unit.Detected && !t.Lost).OrderBy(t => wanted == t.Unit.Id ? -1 : NearShip(t)).FirstOrDefault() is { Unit: { Lat: { } lat, Lon: { } lon } } first && store.Theatre is { } th)
+                        {
+                            var (x, z) = th.FromLatLon(lat, lon);
+                            var r = await AppState.Connection.SendCommandAsync("nctr", new Dictionary<string, object>
+                                { ["x"] = (long)x - 3000, ["z"] = (long)z - 3000, ["x2"] = (long)x + 3000, ["z2"] = (long)z + 3000, ["methods"] = "jem,size" });
+                            zoomReport.Add($"nctr: on {first.Unit.Id}: ok={r.Ok} {r.Value}{r.Error}");
+                            // 12 s: the request is still running when the windows are captured (cones drawn).
+                            for (int sec = 1; sec <= 12; sec++)
+                            {
+                                await Task.Delay(TimeSpan.FromSeconds(1));
+                                if (sec % 3 == 0)
+                                    zoomReport.Add($"nctr: {sec,2} s {State()} | active " + string.Join(" ", store.Nctr?.Requests.Where(q => q.Running)
+                                        .SelectMany(q => q.Results).Where(x => x.Active).Select(x => $"{x.Unit}:{x.Method}") ?? []));
+                            }
+                            foreach (var c in store.Nctr?.Requests.Where(q => q.Running).SelectMany(q => q.Cones ?? []) ?? [])
+                                zoomReport.Add($"nctr: cone {c.Platform} centre {c.Center:0}° ±{c.Half:0}° to {c.Range / 1852:0} NM");
+                            panel.ShowAt(lat, lon, 120 * Core.Nav.MetersPerNm * Map.Mercator.ScaleAt(lat) / Math.Max(300, panel.ActualWidth));
+                            await Task.Delay(TimeSpan.FromSeconds(1));
+                        }
+                        else zoomReport.Add("nctr: no contact");
+                    }
+                    if (args.Length > 8 && args[8] == "rwr")
+                    {
+                        // The RWR scope on the own unit that hears the most (server rwr channel).
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                        zoomReport.Add(await panel.DebugRwr());
+                        await Task.Delay(TimeSpan.FromSeconds(2));
+                    }
                     if (args.Length > 8 && args[8] == "pantest")
                     {
                         await Task.Delay(TimeSpan.FromSeconds(seconds));

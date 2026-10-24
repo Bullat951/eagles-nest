@@ -97,6 +97,10 @@ public sealed class DcbConnection : IAsyncDisposable
                 "command_result" => doc.RootElement.Deserialize<CommandResult>(),
                 "lso" => doc.RootElement.Deserialize<LsoMessage>(),
                 "marks" => doc.RootElement.Deserialize<MarksMessage>(),
+                "rwr" => doc.RootElement.Deserialize<RwrMessage>(),
+                "ids" => doc.RootElement.Deserialize<IdsMessage>(),
+                "threats" => doc.RootElement.Deserialize<ThreatsMessage>(),
+                "nctr" => doc.RootElement.Deserialize<NctrMessage>(),
                 _ => null,
             };
             if (message is not null) yield return message;

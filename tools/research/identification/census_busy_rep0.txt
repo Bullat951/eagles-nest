@@ -1,0 +1,31 @@
+-- 7.7 ms
+1/airplane radar ON                3
+1/airplane units                   3
+1/airplane with RWR                3
+1/airplane with radar              3
+1/ground radar ON                  5
+1/ground units                     196
+1/ground with radar                91
+1/helicopter units                 1
+1/helicopter with RWR              1
+1/ship radar ON                    3
+1/ship units                       15
+1/ship with radar                  6
+2/airplane radar ON                2
+2/airplane units                   2
+2/airplane with RWR                2
+2/airplane with radar              2
+2/ground radar ON                  1
+2/ground units                     23
+2/ground with radar                14
+2/helicopter radar ON              1
+2/helicopter units                 1
+2/helicopter with RWR              1
+2/helicopter with radar            1
+2/ship radar ON                    5
+2/ship units                       5
+2/ship with radar                  5
+pairs receiver x emitter-on: 259, within assumed range: 45
+in-range pairs with line of sight: 36
+radar controllers asked: 20, weapons among their detected targets: 0
+mission time 509 s

@@ -53,6 +53,7 @@ public sealed class AtcViewPanel : UserControl
             AppState.AirfieldSelectionChanged += ShowPick;
             AppState.CarrierSelectionChanged += ShowPick;
             AppState.Store.AirfieldsChanged += ShowPick;
+            AppState.Store.TheatreChanged += ShowPick;
             AppState.Store.Changed += Redraw;
             AppState.Store.LsoChanged += RedrawLso;
             AppState.Queues.Changed += Redraw;
@@ -63,6 +64,7 @@ public sealed class AtcViewPanel : UserControl
             AppState.AirfieldSelectionChanged -= ShowPick;
             AppState.CarrierSelectionChanged -= ShowPick;
             AppState.Store.AirfieldsChanged -= ShowPick;
+            AppState.Store.TheatreChanged -= ShowPick;
             AppState.Store.Changed -= Redraw;
             AppState.Store.LsoChanged -= RedrawLso;
             AppState.Queues.Changed -= Redraw;
@@ -75,7 +77,7 @@ public sealed class AtcViewPanel : UserControl
         if (_diagram is not null || _approach is not null)
         {
             if (AppState.SelectedAirfieldId is not { } id || store.Airfields.FirstOrDefault(a => a.Id == id) is not { } field) return;
-            if (_diagram is not null && _diagram.Field?.Id != field.Id) _diagram.Show(field, ChartLabels.For(field));
+            if (_diagram is not null && !_diagram.Shows(field)) _diagram.Show(field, ChartLabels.For(field));
             _approach?.Show(field);
         }
         else if (AppState.SelectedCarrierId is { } carrier)

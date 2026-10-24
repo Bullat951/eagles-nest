@@ -23,7 +23,7 @@ public static class LandCoverCache
             if (SurfacePath(theatre.Id) is not { } surface) return null;
             var info = new FileInfo(surface);
             var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DCB", "cache");
-            var cache = Path.Combine(dir, $"landcover_{theatre.Id}_{info.Length}_{info.LastWriteTimeUtc.Ticks}_{Cell:0}_v4.bin");
+            var cache = Path.Combine(dir, $"landcover_{theatre.Id}_{info.Length}_{info.LastWriteTimeUtc.Ticks}_{Cell:0}_v5.bin");  // v5: every shader
             if (File.Exists(cache))
             {
                 try
@@ -38,7 +38,9 @@ public static class LandCoverCache
             }
             var lc = LandCover.Extract(surface, theatre.X0, theatre.Z0, theatre.X1, theatre.Z1, Cell);
             Directory.CreateDirectory(dir);
-            foreach (var old in Directory.EnumerateFiles(dir, $"landcover_{theatre.Id}_*.bin")) File.Delete(old);
+            // Older caches go; one another client still reads is left for next time.
+            foreach (var old in Directory.EnumerateFiles(dir, $"landcover_{theatre.Id}_*.bin"))
+                try { File.Delete(old); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             using (var c = File.Create(cache)) lc.Save(c);
             return lc;
         }

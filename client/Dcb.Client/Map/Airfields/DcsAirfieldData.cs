@@ -18,6 +18,8 @@ public static class DcsAirfieldData
         public IReadOnlyList<IcaoMatch.Airport> Airports = [];
         public readonly Dictionary<string, TaxiwayGraph?> Graphs = new(StringComparer.OrdinalIgnoreCase);
         public string? TaxiwayDir;
+        /// <summary>Each rn4's taxiway extent (DCS metres), for fields not named like their file.</summary>
+        public List<(string File, double MinX, double MaxX, double MinZ, double MaxZ)>? Extents;
         public bool Done;
     }
 
@@ -25,19 +27,46 @@ public static class DcsAirfieldData
     public static IReadOnlyList<Beacon> BeaconsFor(string terrainId, int airfieldId) =>
         Get(terrainId)?.Beacons.Where(b => b.AirfieldId == airfieldId).ToList() ?? [];
 
-    /// <summary>The field's taxiway network (its rn4), or null without one.</summary>
-    public static TaxiwayGraph? GraphFor(string terrainId, string airfieldName)
+    /// <summary>The field's taxiway network (its rn4), or null without one. The file is named after
+    /// the field (Syria); where it is not (Caucasus: "Senaki" for Senaki-Kolkhi, "Lochini",
+    /// "TbilisiMilitary" for Soganlug…), the file whose network spans the field's runway centre.</summary>
+    public static TaxiwayGraph? GraphFor(string terrainId, string airfieldName, double x, double z)
     {
         if (Get(terrainId) is not { TaxiwayDir: { } dir } t) return null;
         lock (t.Graphs)
         {
             if (t.Graphs.TryGetValue(airfieldName, out var g)) return g;
             var file = Path.Combine(dir, airfieldName.Replace(' ', '_') + ".rn4");
+            if (!File.Exists(file)) file = NetworkAt(t, dir, x, z) ?? file;
             try { g = File.Exists(file) ? TaxiwayGraph.Decode(File.ReadAllBytes(file)) : null; }
             catch (Exception) { g = null; }
             t.Graphs[airfieldName] = g;
             return g;
         }
+    }
+
+    /// <summary>The rn4 whose taxiway lines' extent holds the point (the nearest centre if several).</summary>
+    private static string? NetworkAt(Terrain t, string dir, double x, double z)
+    {
+        if (t.Extents is null)
+        {
+            t.Extents = [];
+            foreach (var f in Directory.EnumerateFiles(dir, "*.rn4"))
+            {
+                try
+                {
+                    var pts = Taxiways.NearField(Taxiways.Polylines(File.ReadAllBytes(f))).SelectMany(l => l).ToList();
+                    if (pts.Count > 0) t.Extents.Add((f, pts.Min(p => p.X), pts.Max(p => p.X), pts.Min(p => p.Z), pts.Max(p => p.Z)));
+                }
+                catch (Exception)
+                {
+                    // An unreadable file: that field has no network.
+                }
+            }
+        }
+        return t.Extents.Where(e => x >= e.MinX && x <= e.MaxX && z >= e.MinZ && z <= e.MaxZ)
+            .OrderBy(e => Math.Pow((e.MinX + e.MaxX) / 2 - x, 2) + Math.Pow((e.MinZ + e.MaxZ) / 2 - z, 2))
+            .Select(e => e.File).FirstOrDefault();
     }
 
     /// <summary>The control tower nearest to a point within 3 km (scene objects), if any.</summary>
@@ -130,7 +159,8 @@ public static class DcsAirfieldData
             if (LandCoverCache.SurfacePath(id) is not { } surface) return null;
             var info = new FileInfo(surface);
             var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DCB", "cache");
-            var cache = Path.Combine(dir, $"pavement_{id}_{info.Length}_{info.LastWriteTimeUtc.Ticks}_v1.bin");
+            // v2: Caucasus pavement (OldRunway5.1, 16 km finest nodes) was extracted empty in v1.
+            var cache = Path.Combine(dir, $"pavement_{id}_{info.Length}_{info.LastWriteTimeUtc.Ticks}_v2.bin");
             if (File.Exists(cache))
             {
                 try

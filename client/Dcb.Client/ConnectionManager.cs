@@ -60,6 +60,22 @@ public sealed class ConnectionManager(PictureStore store, Dispatcher dispatcher)
                             store.ApplyLso(lso);
                         });
                         break;
+                    case RwrMessage rwr:
+                        await dispatcher.InvokeAsync(() => store.ApplyRwr(rwr));
+                        break;
+                    case NctrMessage nctr:
+                        await dispatcher.InvokeAsync(() => store.ApplyNctr(nctr));
+                        break;
+                    case IdsMessage ids:
+                        await dispatcher.InvokeAsync(() => store.ApplyIds(ids));
+                        break;
+                    case ThreatsMessage threats:
+                        await dispatcher.InvokeAsync(() =>
+                        {
+                            AppState.Board.ToLatLon ??= (x, z) => AppState.Store.Theatre?.ToLatLon(x, z);
+                            AppState.Board.ApplyShared(threats.Threats);
+                        });
+                        break;
                     case MarksMessage marks:
                         await dispatcher.InvokeAsync(() => AppState.Board.ApplyMarks(marks.Marks, DateTime.UtcNow));
                         break;

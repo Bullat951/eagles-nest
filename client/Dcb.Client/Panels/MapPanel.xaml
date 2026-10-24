@@ -45,10 +45,12 @@
             <TextBlock x:Name="AttributionText" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                        Margin="4" Padding="4,1" FontSize="10" Foreground="#DDD" Background="#80000000"
                        IsHitTestVisible="False"/>
-            <!-- RWR clock around an own aircraft (the RWR key or its right-click menu): 12 positions,
-                 12 o'clock on the aircraft's nose; a click draws that bearing line. -->
+            <!-- RWR scope around an own unit (the RWR key or its right-click menu): the emitters its
+                 receiver hears; a click on one, or on any azimuth, draws that bearing line. -->
             <Canvas x:Name="RwrCanvas" Visibility="Collapsed" Background="#01000000"
                     PreviewMouseDown="RwrCanvas_PreviewMouseDown"/>
+            <!-- NCTR area (the NCTR key): drag a box, pick the methods, Run. -->
+            <Canvas x:Name="NctrCanvas" Visibility="Collapsed" Background="#01000000" Cursor="Cross"/>
             <!-- Alt+click: the point in every format, to read out or copy. -->
             <Popup x:Name="PointPopup" PlacementTarget="{Binding ElementName=MapArea}" Placement="Relative"
                    StaysOpen="False" AllowsTransparency="True" Closed="PointPopup_Closed" KeyDown="PointPopup_KeyDown">

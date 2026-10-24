@@ -608,7 +608,9 @@ public sealed class SymbolsSk : MapLayer
         foreach (var t in tracks)
         {
             var u = t.Unit;
-            if (Symbology.IdentityOf(u, own) != Identity.Hostile || ThreatRanges.MetersFor(u.Type) is not { } range) continue;
+            // From the DCS type, or from the controllers' identity of a ground unit ("6" → SA-6).
+            if (Symbology.IdentityOf(u, own) != Identity.Hostile
+                || (ThreatRanges.MetersFor(u.Type) ?? RwrLabels.ThreatFor(u.Assigned, u.Category)?.RangeM) is not { } range) continue;
             var p = SkDraw.ScreenLonLat(view, u.Lon!.Value, u.Lat!.Value);
             var r = (float)(range * Mercator.ScaleAt(u.Lat!.Value) / view.UnitsPerDip);
             if (!drawn.Add(((int)(p.X / 6), (int)(p.Y / 6), range))) continue;  // one ring per SAM site

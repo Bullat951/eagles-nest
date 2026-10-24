@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Media = System.Windows.Media;
 using Dcb.Client.Core;
 using Dcb.Client.Map;
 using Dcb.Client.Map.Gpu;
@@ -116,6 +117,12 @@ public partial class MapPanel : UserControl
         AppState.Packages.Changed += Surface.Invalidate;
         AppState.Board.Changed += Surface.Invalidate;
         AppState.RwrClockRequested += OnRwrKey;
+        AppState.NctrRequested += OnNctrKey;
+        AppState.Store.NctrChanged += Surface.Invalidate;
+        // The methods being worked flash beside their contacts while an NCTR request runs.
+        _nctrFlash ??= new System.Windows.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(500), System.Windows.Threading.DispatcherPriority.Background,
+            (_, _) => { if (AppState.Store.Nctr?.Requests.Any(r => r.Running) == true) Surface.Invalidate(); }, Dispatcher);
+        _nctrFlash.Start();
         OnAirfieldSelectionChanged();  // picked before this map loaded
         ApplyTrackFilters();
         PlaceInitialView();
@@ -172,7 +179,11 @@ public partial class MapPanel : UserControl
         AppState.Packages.Changed -= Surface.Invalidate;
         AppState.Board.Changed -= Surface.Invalidate;
         AppState.RwrClockRequested -= OnRwrKey;
+        AppState.NctrRequested -= OnNctrKey;
+        AppState.Store.NctrChanged -= Surface.Invalidate;
+        _nctrFlash?.Stop();
         CloseRwrClock();
+        CloseNctr();
     }
 
     private void OnAirfieldSelectionChanged()
@@ -466,6 +477,8 @@ public partial class MapPanel : UserControl
         var store = AppState.Store;
         if (_symbols.HitTest(at.X, at.Y) is { } id && store.Find(id)?.Unit is { } unit && PackageMenu.Packable(unit))
             AddTrackItems(menu, unit);
+        else if (_symbols.HitTest(at.X, at.Y) is { } cid && store.Find(cid)?.Unit is { Detected: true } contact)
+            AddContactItems(menu, contact);
         else if (_gci.HitThreat(at.X, at.Y) is { } threat)
             AddThreatItems(menu, threat);
         else if (_gci.HitMark(at.X, at.Y) is { } mark)
@@ -489,7 +502,7 @@ public partial class MapPanel : UserControl
     {
         var board = AppState.Board;
         var key = AppState.Settings.RwrKey;
-        menu.Items.Add(Item($"RWR spike… ({key})", () => OpenRwrClock(unit.Id), unit.Hdg is not null));
+        menu.Items.Add(Item($"RWR… ({key})", () => OpenRwrScope(unit.Id)));
         if (board.Lines.Any(l => l.TrackId == unit.Id))
             menu.Items.Add(Item($"Clear bearing lines of {LineLabel(unit)}", () => board.ClearLines(unit.Id)));
         menu.Items.Add(new Separator());
@@ -512,6 +525,67 @@ public partial class MapPanel : UserControl
         if (PackageMenu.ListenItem(unit, this) is { } listen) menu.Items.Add(listen);
     }
 
+    /// <summary>A radar contact: identify it for the coalition — first the RWR emitters whose
+    /// bearings pass through it, then any label or a typed name — or clear its identity.</summary>
+    private void AddContactItems(ContextMenu menu, Unit contact)
+    {
+        var store = AppState.Store;
+        var connected = AppState.Connection.IsConnected;
+        var what = contact.Type ?? (contact.Assigned is { } a ? $"identified as {a}" : "unidentified");
+        menu.Items.Add(new MenuItem { Header = $"Contact: {what}", IsEnabled = false });
+        var identify = new MenuItem { Header = "Identify as", IsEnabled = connected };
+        // NCTR answers first (newest request), then RWR emitters whose bearings pass through it.
+        foreach (var n in store.NctrFor(contact.Id))
+        {
+            var label = NctrMethods.LabelOf(n);
+            var header = $"{n.Result}   NCTR {NctrMethods.NameOf(n.Method)}" + (n.Platform is { } p ? $" by {p}" : "");
+            identify.Items.Add(label is null
+                ? new MenuItem { Header = header, IsEnabled = false }  // a size class or raid count is a hint, not an identity
+                : Item(header, () => _ = IdentifyAsync(contact.Id, label)));
+        }
+        var candidates = RwrLabels.Candidates(contact, store.Rwr, id => store.Find(id)?.Unit, GridToTrue);
+        foreach (var c in candidates.Take(6))
+        {
+            var heard = c.Receivers == 1 ? "1 receiver" : $"{c.Receivers} receivers";
+            identify.Items.Add(Item($"{c.Label}   RWR: {heard}, {c.Off:0}° off", () => _ = IdentifyAsync(contact.Id, c.Label)));
+        }
+        if (candidates.Count == 0) identify.Items.Add(new MenuItem { Header = "(no RWR bearing passes through it)", IsEnabled = false });
+        identify.Items.Add(new Separator());
+        foreach (var (group, labels) in RwrLabels.Groups)
+        {
+            var sub = new MenuItem { Header = group };
+            foreach (var l in labels)
+            {
+                var label = l;
+                sub.Items.Add(Item(label, () => _ = IdentifyAsync(contact.Id, label)));
+            }
+            identify.Items.Add(sub);
+        }
+        identify.Items.Add(Item("Type a name…", () =>
+        {
+            if (PromptText("Identify contact", "Identity for your coalition (up to 24 letters, digits, '-', '/', spaces), e.g. \"Su-34\" or \"SA-11\":") is { } text)
+                _ = IdentifyAsync(contact.Id, text);
+        }));
+        menu.Items.Add(identify);
+        if (contact.Assigned is { } current)
+            menu.Items.Add(Item($"Clear identity ({current})", () => _ = IdentifyAsync(contact.Id, ""), connected));
+    }
+
+    /// <summary>Sends an identity (empty: clears it); the ids channel brings it back to every
+    /// controller of the coalition.</summary>
+    private async Task IdentifyAsync(long unitId, string label)
+    {
+        label = label.Trim();
+        if (label.Length > 24 || !System.Text.RegularExpressions.Regex.IsMatch(label, @"^[A-Za-z0-9 /\-]*$"))
+        {
+            MessageBox.Show(Window.GetWindow(this), "Up to 24 letters, digits, '-', '/' and spaces.", "Identify", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        var result = await AppState.Connection.SendCommandAsync("identify", new Dictionary<string, object> { ["unit"] = unitId, ["label"] = label });
+        if (!result.Ok)
+            MessageBox.Show(Window.GetWindow(this), $"Not identified: {result.Error}", "Identify", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
     private void AddMapItems(ContextMenu menu, Point at)
     {
         var board = AppState.Board;
@@ -527,7 +601,9 @@ public partial class MapPanel : UserControl
                 var t = type;
                 place.Items.Add(Item($"{t.Name}  ({t.RangeKm / 1.852:0} NM)", () =>
                 {
-                    board.AddThreat(t, lat, lon, DateTime.UtcNow);
+                    // Connected: shared with the coalition's controllers; offline: a note here.
+                    if (AppState.Connection.IsConnected) _ = ShareThreatAsync(t, lat, lon);
+                    else board.AddThreat(t, lat, lon, DateTime.UtcNow);
                     if (fixHit.Fix is not null) board.ClearLines(fixHit.TrackId);
                 }));
             }
@@ -547,9 +623,23 @@ public partial class MapPanel : UserControl
         var board = AppState.Board;
         var connected = AppState.Connection.IsConnected;
         var mark = board.Marks.FirstOrDefault(m => m.Id == threat.MarkId);
-        var source = threat.MarkId is null ? "not sent"
+        var source = threat.SharedId is not null ? "controllers only"
+            : threat.MarkId is null ? "not sent"
             : mark is null ? "F10 mark" : mark.Dcb ? "F10 mark by DCB" : mark.ByMission ? "F10 mark by the mission" : $"F10 mark by {mark.Author}";
         menu.Items.Add(new MenuItem { Header = $"{threat.Type.Name} ({source})", IsEnabled = false });
+        if (threat.SharedId is { } sharedId)
+        {
+            // To the pilots: the F10 mark takes over, so the shared one goes.
+            menu.Items.Add(Item("Send to F10 map", async () =>
+            {
+                if (await SendMarkAsync(threat.Lat, threat.Lon, $"{threat.Type.Name} (GCI)", threat.Type.Name) is not null)
+                    await RemoveSharedThreatAsync(sharedId);
+            }, connected));
+            menu.Items.Add(Item("Coordinates…", () => ShowPointAt(threat.Lat, threat.Lon)));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Item("Delete threat (for every controller)", () => _ = RemoveSharedThreatAsync(sharedId), connected));
+            return;
+        }
         if (threat.Local is { MarkId: null } local)
             menu.Items.Add(Item("Send to F10 map", () => _ = SendThreatAsync(local), connected));
         // The mark is the threat: removing it removes the threat for everyone.
@@ -590,6 +680,25 @@ public partial class MapPanel : UserControl
         if (result.Ok && long.TryParse(result.Value, out var id)) return id;
         MessageBox.Show(Window.GetWindow(this), $"Not sent: {result.Error ?? "no mark id"}", "F10 mark", MessageBoxButton.OK, MessageBoxImage.Warning);
         return null;
+    }
+
+    /// <summary>A threat for the coalition's controllers (not the pilots): the threats channel
+    /// brings it to every one of them, this client included.</summary>
+    private async Task ShareThreatAsync(ThreatType type, double lat, double lon)
+    {
+        if (AppState.Store.Theatre is not { } theatre) return;
+        var (x, z) = theatre.FromLatLon(lat, lon);
+        var result = await AppState.Connection.SendCommandAsync("threat_add", new Dictionary<string, object>
+            { ["x"] = (long)Math.Round(x), ["z"] = (long)Math.Round(z), ["threat"] = type.Name });
+        if (!result.Ok)
+            MessageBox.Show(Window.GetWindow(this), $"Not shared: {result.Error}", "Threat", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private async Task RemoveSharedThreatAsync(long id)
+    {
+        var result = await AppState.Connection.SendCommandAsync("threat_remove", new Dictionary<string, object> { ["threat_id"] = id });
+        if (!result.Ok)
+            MessageBox.Show(Window.GetWindow(this), $"Not removed: {result.Error}", "Threat", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private async Task SendThreatAsync(ThreatMarker threat)
@@ -644,92 +753,244 @@ public partial class MapPanel : UserControl
         return text.Length == 0 ? null : text;
     }
 
-    // ---- RWR clock: the pilot's "spike, 3 o'clock" as a bearing line --------------------------
+    // ---- RWR scope: what an own unit's receiver hears, and bearing lines from it -------------
+    // The server's RWR picture (rwr channel) around the own unit under the pointer or the selected
+    // one: each emitter at its bearing, nearer the centre the stronger it is, coloured by mode
+    // (search, track, launch flashing), a bar over airborne ones. A click on an emitter draws its
+    // bearing line (wedge = its error); a click anywhere else on the scope draws a line at that
+    // azimuth (a pilot's call on voice). Live once a second until Esc or a click outside it.
+    // The mouse wheel over it sizes it (kept for the session); symbols that would overlap are
+    // pushed apart, with a leader line to where their bearing and strength put them.
 
-    private const double ClockRadius = 62;
+    private const double ScopeMinRadius = 70;
+    private double _scopeRadius = 150;
+    private double ScopeRadius => Math.Clamp(_scopeRadius, ScopeMinRadius, Math.Max(ScopeMinRadius, Math.Min(MapArea.ActualWidth, MapArea.ActualHeight) / 2 - 24));
     private long? _rwrTrack;
+    private Point? _scopeMouse;
+
+    private static Media.SolidColorBrush Brush(byte a, byte r, byte g, byte b)
+    {
+        var brush = new Media.SolidColorBrush(Media.Color.FromArgb(a, r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static readonly Media.SolidColorBrush ScopeInk = Brush(190, 255, 179, 71);
+    private static readonly Media.SolidColorBrush ScopeFaint = Brush(70, 255, 179, 71);
+    private static readonly Media.SolidColorBrush ScopeFill = Brush(150, 8, 12, 10);
+    private static readonly Media.SolidColorBrush SearchInk = Brush(255, 120, 230, 120);
+    private static readonly Media.SolidColorBrush TrackInk = Brush(255, 255, 214, 64);
+    private static readonly Media.SolidColorBrush LaunchInk = Brush(255, 255, 72, 72);
 
     private static string LineLabel(Unit u) => Symbology.NameOf(u) ?? u.Callsign ?? $"#{u.Id}";
 
-    /// <summary>The RWR key: the clock for the own aircraft under the pointer, else the selected one.</summary>
+    /// <summary>The RWR key: the scope for the own unit under the pointer, else the selected one.</summary>
     private bool OnRwrKey()
     {
         if (!MapArea.IsMouseOver || !Nav.IsValid) return false;
         var p = Mouse.GetPosition(MapArea);
         var store = AppState.Store;
-        long? id = _symbols.HitTest(p.X, p.Y) is { } hit && store.Find(hit)?.Unit is { } u && PackageMenu.Packable(u) ? hit
-            : store.SelectedId is { } sel && store.Find(sel)?.Unit is { } s && PackageMenu.Packable(s) ? sel : null;
+        static bool Own(Unit? u) => u is { Detected: false, Lat: not null, Lon: not null };
+        long? id = _symbols.HitTest(p.X, p.Y) is { } hit && Own(store.Find(hit)?.Unit) ? hit
+            : store.SelectedId is { } sel && Own(store.Find(sel)?.Unit) ? sel : null;
         if (id is null) return false;
-        OpenRwrClock(id.Value);
+        OpenRwrScope(id.Value);
         return true;
     }
 
-    private void OpenRwrClock(long trackId)
+    private void OpenRwrScope(long trackId)
     {
-        if (AppState.Store.Find(trackId)?.Unit is not { Lat: { } lat, Lon: { } lon, Hdg: { } hdg } unit) return;
         _rwrTrack = trackId;
-        var (cx, cy) = Nav.View.ToScreenLonLat(lon, lat);
-        RwrCanvas.Children.Clear();
-        var ring = new System.Windows.Shapes.Ellipse
-        {
-            Width = 2 * ClockRadius, Height = 2 * ClockRadius, Stroke = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(170, 255, 179, 71)),
-            StrokeThickness = 1.2, Fill = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(70, 0, 0, 0)), IsHitTestVisible = false,
-        };
-        Canvas.SetLeft(ring, cx - ClockRadius);
-        Canvas.SetTop(ring, cy - ClockRadius);
-        RwrCanvas.Children.Add(ring);
-        // Screen up is true north on the map (Mercator), so the nose is at the heading.
-        for (int clock = 1; clock <= 12; clock++)
-        {
-            var a = (hdg + clock * 30) * Math.PI / 180;
-            var beam = clock is 3 or 9;
-            var size = beam ? 30.0 : 24.0;
-            var button = new Button
-            {
-                Content = clock.ToString(), Width = size, Height = size, Padding = new Thickness(0),
-                FontWeight = beam || clock == 12 ? FontWeights.Bold : FontWeights.Normal,
-                ToolTip = $"Spike at {clock} o'clock: bearing line from {LineLabel(unit)}",
-            };
-            var c = clock;
-            button.Click += (_, _) => AddRwrLine(c);
-            Canvas.SetLeft(button, cx + Math.Sin(a) * ClockRadius - size / 2);
-            Canvas.SetTop(button, cy - Math.Cos(a) * ClockRadius - size / 2);
-            RwrCanvas.Children.Add(button);
-        }
-        var title = new TextBlock
-        {
-            Text = $"{LineLabel(unit)}\nspike at?", Foreground = System.Windows.Media.Brushes.White, FontSize = 11,
-            TextAlignment = TextAlignment.Center, IsHitTestVisible = false,
-        };
-        title.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Canvas.SetLeft(title, cx - title.DesiredSize.Width / 2);
-        Canvas.SetTop(title, cy + 10);
-        RwrCanvas.Children.Add(title);
+        _scopeMouse = null;
+        AppState.Store.RwrChanged -= BuildRwrScope;
+        AppState.Store.RwrChanged += BuildRwrScope;
+        BuildRwrScope();
+        if (_rwrTrack is null) return;
         RwrCanvas.Focusable = true;
         RwrCanvas.Visibility = Visibility.Visible;
         RwrCanvas.Focus();
         RwrCanvas.KeyDown -= RwrCanvas_KeyDown;
         RwrCanvas.KeyDown += RwrCanvas_KeyDown;
+        RwrCanvas.MouseMove -= RwrCanvas_MouseMove;
+        RwrCanvas.MouseMove += RwrCanvas_MouseMove;
+        RwrCanvas.PreviewMouseWheel -= RwrCanvas_MouseWheel;
+        RwrCanvas.PreviewMouseWheel += RwrCanvas_MouseWheel;
     }
 
-    /// <summary>The line from where the aircraft is now (not where it was when the clock opened).</summary>
-    private void AddRwrLine(int clock)
+    /// <summary>The wheel sizes the scope (not the map's zoom while it is open).</summary>
+    private void RwrCanvas_MouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_rwrTrack is { } id && AppState.Store.Find(id)?.Unit is { Lat: { } lat, Lon: { } lon, Hdg: { } hdg } u)
-            AppState.Board.AddLine(id, LineLabel(u), lat, lon, hdg, clock, DateTime.UtcNow);
-        CloseRwrClock();
+        _scopeRadius = Math.Clamp(ScopeRadius * Math.Pow(1.15, e.Delta / 120.0), ScopeMinRadius, 2000);
+        BuildRwrScope();
+        e.Handled = true;
+    }
+
+    /// <summary>Grid → true at a point (RWR bearings and headings come from DCS grid north).</summary>
+    private static double GridToTrue(double lat, double lon) => AppState.Store.Theatre?.GridNorthAt(lat, lon) ?? 0;
+
+    private (double X, double Y, Unit Unit)? ScopeCentre() =>
+        _rwrTrack is { } id && AppState.Store.Find(id)?.Unit is { Lat: { } lat, Lon: { } lon } u && Nav.IsValid
+            ? (Nav.View.ToScreenLonLat(lon, lat).X, Nav.View.ToScreenLonLat(lon, lat).Y, u) : null;
+
+    private void BuildRwrScope()
+    {
+        if (ScopeCentre() is not var (cx, cy, unit))
+        {
+            CloseRwrClock();
+            return;
+        }
+        var R = ScopeRadius;
+        var kids = RwrCanvas.Children;
+        kids.Clear();
+        void Place(UIElement e, double x, double y) { Canvas.SetLeft(e, x); Canvas.SetTop(e, y); kids.Add(e); }
+
+        // The disc takes the azimuth clicks; rings at a third and two thirds of the signal.
+        var disc = new System.Windows.Shapes.Ellipse { Width = 2 * R, Height = 2 * R, Stroke = ScopeInk, StrokeThickness = 1.4, Fill = ScopeFill, Cursor = Cursors.Cross };
+        disc.MouseLeftButtonDown += (_, e) =>
+        {
+            var at = e.GetPosition(RwrCanvas);
+            AddRwrLine(Core.Nav.Normalize(Math.Atan2(at.X - cx, cy - at.Y) * 180 / Math.PI), Core.Triangulation.BearingSigmaDeg, null);
+            e.Handled = true;
+        };
+        Place(disc, cx - R, cy - R);
+        foreach (var f in new[] { 1 / 3.0, 2 / 3.0 })
+            Place(new System.Windows.Shapes.Ellipse { Width = 2 * R * f, Height = 2 * R * f, Stroke = ScopeFaint, StrokeThickness = 1, IsHitTestVisible = false }, cx - R * f, cy - R * f);
+
+        // Ticks every 30° from the nose (clock positions); the nose a longer tick.
+        if (unit.Hdg is { } hdg)
+        {
+            var nose = hdg + GridToTrue(unit.Lat!.Value, unit.Lon!.Value);
+            for (int clock = 0; clock < 12; clock++)
+            {
+                var a = (nose + clock * 30) * Math.PI / 180;
+                var inner = clock == 0 ? R - 16 : clock % 3 == 0 ? R - 10 : R - 6;
+                kids.Add(new System.Windows.Shapes.Line
+                {
+                    X1 = cx + Math.Sin(a) * inner, Y1 = cy - Math.Cos(a) * inner, X2 = cx + Math.Sin(a) * R, Y2 = cy - Math.Cos(a) * R,
+                    Stroke = ScopeInk, StrokeThickness = clock == 0 ? 2.4 : 1.2, IsHitTestVisible = false,
+                });
+            }
+        }
+
+        var store = AppState.Store;
+        var emitters = store.RwrFor(unit.Id);
+        var gridToTrue = GridToTrue(unit.Lat!.Value, unit.Lon!.Value);
+        // Launch, then track, then the strongest keep their own spots; drawn the other way round
+        // so the most important ends on top.
+        var ordered = emitters.OrderByDescending(e => e.Mode == "launch" ? 2 : e.Mode == "track" ? 1 : 0).ThenByDescending(e => e.Level).ToList();
+        var symbols = new List<(FrameworkElement Symbol, double X, double Y, Media.Brush Ink)>();
+        foreach (var e in ordered)
+        {
+            var brg = Core.Nav.Normalize(e.Bearing + gridToTrue);
+            var r = R * (0.22 + 0.68 * (1 - Math.Clamp(e.Level, 0, 1)));
+            var a = brg * Math.PI / 180;
+            var ink = e.Mode switch { "launch" => LaunchInk, "track" => TrackInk, _ => SearchInk };
+            var air = e.Category is "airplane" or "helicopter";
+            var symbol = new Border
+            {
+                Child = new TextBlock { Text = e.Label, Foreground = ink, FontWeight = FontWeights.Bold, FontSize = 12, Margin = new Thickness(3, 0, 3, 0) },
+                BorderBrush = ink, BorderThickness = air ? new Thickness(0, 2.5, 0, 0) : new Thickness(0),
+                Background = Brush(200, 0, 0, 0), Cursor = Cursors.Hand,
+                ToolTip = $"{e.Label}  {e.Category}, {e.Mode}\nbearing {brg:000}° ±{e.Err:0}° from {LineLabel(unit)}\nclick: bearing line",
+            };
+            var emitter = e;
+            var bearing = brg;
+            symbol.MouseLeftButtonDown += (_, ev) =>
+            {
+                AddRwrLine(bearing, emitter.Err, emitter.Label);
+                ev.Handled = true;
+            };
+            if (e.Mode == "launch")
+            {
+                var flash = new System.Windows.Media.Animation.DoubleAnimation(1, 0.25, TimeSpan.FromMilliseconds(350)) { AutoReverse = true, RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever };
+                symbol.BeginAnimation(OpacityProperty, flash);
+            }
+            symbol.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            symbols.Add((symbol, cx + Math.Sin(a) * r, cy - Math.Cos(a) * r, ink));
+        }
+        var spots = ScopeLayout.Declutter(symbols.Select(s => (s.X, s.Y, s.Symbol.DesiredSize.Width, s.Symbol.DesiredSize.Height)).ToList(), cx, cy, R);
+        for (int i = symbols.Count - 1; i >= 0; i--)
+        {
+            var (symbol, x, y, ink) = symbols[i];
+            var (sx, sy) = spots[i];
+            if (Math.Abs(sx - x) + Math.Abs(sy - y) > 3)
+            {
+                // Moved aside: a dot where it belongs, and a leader to it.
+                kids.Add(new System.Windows.Shapes.Line { X1 = x, Y1 = y, X2 = sx, Y2 = sy, Stroke = ink, StrokeThickness = 0.8, Opacity = 0.7, IsHitTestVisible = false });
+                Place(new System.Windows.Shapes.Ellipse { Width = 4, Height = 4, Fill = ink, IsHitTestVisible = false }, x - 2, y - 2);
+            }
+            Place(symbol, sx - symbol.DesiredSize.Width / 2, sy - symbol.DesiredSize.Height / 2);
+        }
+
+        // Centre: the receiver, and what the scope has to say about it.
+        var status = store.Rwr is null ? "no RWR data" : emitters.Count == 0 ? "nothing heard" : $"{emitters.Count} heard";
+        var title = new TextBlock
+        {
+            Text = $"{LineLabel(unit)}\n{status} · wheel: size", Foreground = Media.Brushes.White, FontSize = 10.5,
+            TextAlignment = TextAlignment.Center, IsHitTestVisible = false,
+        };
+        title.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Place(title, cx - title.DesiredSize.Width / 2, cy + R + 4);
+        kids.Add(new System.Windows.Shapes.Ellipse { Width = 5, Height = 5, Fill = ScopeInk, IsHitTestVisible = false });
+        Canvas.SetLeft(kids[^1], cx - 2.5);
+        Canvas.SetTop(kids[^1], cy - 2.5);
+        UpdateScopeCursor();
+    }
+
+    /// <summary>The azimuth under the pointer: a line from the centre and its bearing.</summary>
+    private void RwrCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        _scopeMouse = e.GetPosition(RwrCanvas);
+        UpdateScopeCursor();
+    }
+
+    private System.Windows.Shapes.Line? _scopeLine;
+    private TextBlock? _scopeText;
+
+    private void UpdateScopeCursor()
+    {
+        if (_scopeLine is not null) RwrCanvas.Children.Remove(_scopeLine);
+        if (_scopeText is not null) RwrCanvas.Children.Remove(_scopeText);
+        _scopeLine = null;
+        _scopeText = null;
+        if (_scopeMouse is not { } m || ScopeCentre() is not var (cx, cy, _)) return;
+        double dx = m.X - cx, dy = m.Y - cy, d = Math.Sqrt(dx * dx + dy * dy);
+        if (d > ScopeRadius || d < 8) return;
+        var brg = Core.Nav.Normalize(Math.Atan2(dx, -dy) * 180 / Math.PI);
+        _scopeLine = new System.Windows.Shapes.Line
+        {
+            X1 = cx, Y1 = cy, X2 = cx + dx / d * ScopeRadius, Y2 = cy + dy / d * ScopeRadius,
+            Stroke = ScopeInk, StrokeThickness = 1, StrokeDashArray = [4, 3], IsHitTestVisible = false,
+        };
+        _scopeText = new TextBlock { Text = $"{brg:000}°", Foreground = ScopeInk, FontSize = 11, FontWeight = FontWeights.Bold, IsHitTestVisible = false };
+        Canvas.SetLeft(_scopeText, cx + dx / d * (ScopeRadius + 6) - 12);
+        Canvas.SetTop(_scopeText, cy + dy / d * (ScopeRadius + 6) - 8);
+        // Under the emitter symbols, over the disc.
+        RwrCanvas.Children.Insert(Math.Min(1, RwrCanvas.Children.Count), _scopeLine);
+        RwrCanvas.Children.Add(_scopeText);
+    }
+
+    /// <summary>A bearing line from where the unit is now, true degrees; the scope stays open.</summary>
+    private void AddRwrLine(double bearingTrue, double sigmaDeg, string? emitter)
+    {
+        if (_rwrTrack is { } id && AppState.Store.Find(id)?.Unit is { Lat: { } lat, Lon: { } lon } u)
+            AppState.Board.AddLine(id, LineLabel(u), lat, lon, bearingTrue, DateTime.UtcNow, sigmaDeg, emitter);
     }
 
     private void CloseRwrClock()
     {
         _rwrTrack = null;
+        _scopeMouse = null;
+        _scopeLine = null;
+        _scopeText = null;
+        AppState.Store.RwrChanged -= BuildRwrScope;
         RwrCanvas.Visibility = Visibility.Collapsed;
         RwrCanvas.Children.Clear();
     }
 
     private void RwrCanvas_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        // A click beside the buttons closes the clock (and does nothing else on the map).
+        // A click outside the scope closes it (and does nothing else on the map).
         if (ReferenceEquals(e.OriginalSource, RwrCanvas))
         {
             CloseRwrClock();
@@ -746,6 +1007,174 @@ public partial class MapPanel : UserControl
         }
     }
 
+    // ---- NCTR: the NCTR key, a box dragged on the map, the methods, Run ----------------------
+    // The server's AI radars holding the contacts in the box try each method (docs/
+    // RESEARCH-IDENTIFICATION.md, phase 4); results come back on the nctr channel and show beside
+    // the contacts and first in their Identify menu.
+
+    private Point? _nctrFrom;
+    private System.Windows.Threading.DispatcherTimer? _nctrFlash;
+    private System.Windows.Shapes.Rectangle? _nctrBox;
+    private static readonly HashSet<string> NctrChosen = ["jem", "hrrp", "isar", "size", "rotor", "raid"];  // remembered for the session
+
+    private bool OnNctrKey()
+    {
+        if (!MapArea.IsMouseOver || !Nav.IsValid || !AppState.Connection.IsConnected) return false;
+        CloseRwrClock();
+        CloseNctr();
+        NctrCanvas.Visibility = Visibility.Visible;
+        NctrCanvas.Focusable = true;
+        NctrCanvas.Focus();
+        NctrCanvas.MouseLeftButtonDown += NctrCanvas_Down;
+        NctrCanvas.MouseMove += NctrCanvas_Move;
+        NctrCanvas.MouseLeftButtonUp += NctrCanvas_Up;
+        NctrCanvas.KeyDown += NctrCanvas_Key;
+        var hint = new TextBlock { Text = "NCTR: drag a box around the contacts (Esc cancels)", Foreground = ScopeInk, Background = Brush(170, 0, 0, 0),
+            Padding = new Thickness(6, 2, 6, 2), IsHitTestVisible = false };
+        Canvas.SetLeft(hint, 10);
+        Canvas.SetTop(hint, 36);
+        NctrCanvas.Children.Add(hint);
+        return true;
+    }
+
+    private void NctrCanvas_Down(object sender, MouseButtonEventArgs e)
+    {
+        if (_nctrBox is not null && !ReferenceEquals(e.OriginalSource, NctrCanvas)) return;  // the method picker
+        foreach (var card in NctrCanvas.Children.OfType<Border>().ToList()) NctrCanvas.Children.Remove(card);  // a new box
+        _nctrFrom = e.GetPosition(NctrCanvas);
+        if (_nctrBox is null)
+        {
+            _nctrBox = new System.Windows.Shapes.Rectangle { Stroke = ScopeInk, StrokeThickness = 1.5, StrokeDashArray = [5, 3], Fill = Brush(30, 255, 179, 71), IsHitTestVisible = false };
+            NctrCanvas.Children.Add(_nctrBox);
+        }
+        NctrCanvas.CaptureMouse();
+        NctrCanvas_Move(sender, e);
+        e.Handled = true;
+    }
+
+    private void NctrCanvas_Move(object sender, MouseEventArgs e)
+    {
+        if (_nctrFrom is not { } a || _nctrBox is null || !NctrCanvas.IsMouseCaptured) return;
+        var b = e.GetPosition(NctrCanvas);
+        Canvas.SetLeft(_nctrBox, Math.Min(a.X, b.X));
+        Canvas.SetTop(_nctrBox, Math.Min(a.Y, b.Y));
+        _nctrBox.Width = Math.Abs(b.X - a.X);
+        _nctrBox.Height = Math.Abs(b.Y - a.Y);
+    }
+
+    private void NctrCanvas_Up(object sender, MouseButtonEventArgs e)
+    {
+        if (_nctrFrom is not { } a || !NctrCanvas.IsMouseCaptured) return;
+        NctrCanvas.ReleaseMouseCapture();
+        var b = e.GetPosition(NctrCanvas);
+        e.Handled = true;
+        if (Math.Abs(b.X - a.X) < 8 || Math.Abs(b.Y - a.Y) < 8)
+        {
+            CloseNctr();  // a click, not a box
+            return;
+        }
+        ShowNctrMethods(a, b);
+    }
+
+    private void NctrCanvas_Key(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        CloseNctr();
+        e.Handled = true;
+    }
+
+    /// <summary>The methods to try (each with its rule as a tooltip), then Run.</summary>
+    private void ShowNctrMethods(Point a, Point b)
+    {
+        var panel = new StackPanel { Margin = new Thickness(8) };
+        panel.Children.Add(new TextBlock { Text = "NCTR methods", FontWeight = FontWeights.Bold, Foreground = Media.Brushes.White, Margin = new Thickness(0, 0, 0, 4) });
+        var boxes = new List<(string Id, CheckBox Box)>();
+        foreach (var (id, name, hint) in NctrMethods.All)
+        {
+            var box = new CheckBox { Content = name, IsChecked = NctrChosen.Contains(id), ToolTip = hint, Foreground = Media.Brushes.White, Margin = new Thickness(0, 1, 0, 1) };
+            boxes.Add((id, box));
+            panel.Children.Add(box);
+        }
+        var run = new Button { Content = "Run", IsDefault = true, MinWidth = 64, Margin = new Thickness(0, 6, 6, 0) };
+        var cancel = new Button { Content = "Cancel", MinWidth = 64, Margin = new Thickness(0, 6, 0, 0) };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        buttons.Children.Add(run);
+        buttons.Children.Add(cancel);
+        panel.Children.Add(buttons);
+        var card = new Border { Child = panel, Background = Brush(235, 22, 26, 30), BorderBrush = ScopeInk, BorderThickness = new Thickness(1) };
+        cancel.Click += (_, _) => CloseNctr();
+        run.Click += async (_, _) =>
+        {
+            var methods = boxes.Where(x => x.Box.IsChecked == true).Select(x => x.Id).ToList();
+            NctrChosen.Clear();
+            foreach (var m in methods) NctrChosen.Add(m);
+            CloseNctr();
+            if (methods.Count > 0) await RunNctrAsync(a, b, methods);
+        };
+        Canvas.SetLeft(card, Math.Min(Math.Max(a.X, b.X) + 6, Math.Max(0, NctrCanvas.ActualWidth - 150)));
+        Canvas.SetTop(card, Math.Min(Math.Min(a.Y, b.Y), Math.Max(0, NctrCanvas.ActualHeight - 200)));
+        NctrCanvas.Children.Add(card);
+    }
+
+    private async Task RunNctrAsync(Point a, Point b, IReadOnlyList<string> methods)
+    {
+        if (AppState.Store.Theatre is not { } theatre) return;
+        var (la, loa) = Nav.View.ToLatLon(a.X, a.Y);
+        var (lb, lob) = Nav.View.ToLatLon(b.X, b.Y);
+        var (x1, z1) = theatre.FromLatLon(la, loa);
+        var (x2, z2) = theatre.FromLatLon(lb, lob);
+        var result = await AppState.Connection.SendCommandAsync("nctr", new Dictionary<string, object>
+        {
+            ["x"] = (long)Math.Round(x1), ["z"] = (long)Math.Round(z1), ["x2"] = (long)Math.Round(x2), ["z2"] = (long)Math.Round(z2),
+            ["methods"] = string.Join(",", methods),
+        });
+        if (!result.Ok)
+            MessageBox.Show(Window.GetWindow(this), $"NCTR not started: {result.Error}", "NCTR", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private void CloseNctr()
+    {
+        NctrCanvas.MouseLeftButtonDown -= NctrCanvas_Down;
+        NctrCanvas.MouseMove -= NctrCanvas_Move;
+        NctrCanvas.MouseLeftButtonUp -= NctrCanvas_Up;
+        NctrCanvas.KeyDown -= NctrCanvas_Key;
+        if (NctrCanvas.IsMouseCaptured) NctrCanvas.ReleaseMouseCapture();
+        NctrCanvas.Children.Clear();
+        NctrCanvas.Visibility = Visibility.Collapsed;
+        _nctrFrom = null;
+        _nctrBox = null;
+    }
+
+    /// <summary>Snapshot aid: the RWR scope on the own unit hearing the most emitters (server
+    /// picture), with the bearing line of its first emitter drawn as a click would.</summary>
+    public async Task<string> DebugRwr()
+    {
+        var store = AppState.Store;
+        for (int i = 0; i < 10 && store.Rwr is null; i++) await Task.Delay(500);
+        var best = store.Rwr?.Receivers.Where(r => r.Emitters.Count > 0 && store.Find(r.Id)?.Unit is { Lat: not null, Lon: not null })
+            .MaxBy(r => r.Emitters.Count);
+        if (best is null) return $"rwr: {(store.Rwr is null ? "no rwr message" : "no receiver hears anything")}";
+        var u = store.Find(best.Id)!.Unit;
+        double lat = u.Lat!.Value, lon = u.Lon!.Value;
+        ShowAt(lat, lon, 80 * Core.Nav.MetersPerNm * Mercator.ScaleAt(lat) / Math.Max(300, Math.Min(Nav.Width, Nav.Height)));
+        await Task.Delay(500);
+        OpenRwrScope(best.Id);
+        var e = best.Emitters[0];
+        var brg = Core.Nav.Normalize(e.Bearing + GridToTrue(lat, lon));
+        AddRwrLine(brg, e.Err, e.Label);
+        await Task.Delay(1500);
+        var scopeState = RwrCanvas.IsVisible ? "scope open" : "scope closed";
+        // What the Identify menu would suggest for each contact (RWR bearings through it).
+        var contacts = store.Tracks.Where(t => t.Unit.Detected && !t.Lost).Select(t => t.Unit).Take(8)
+            .Select(c => $"{c.Id} {c.Category} shown={c.Shown ?? "-"} suggests " +
+                string.Join("/", RwrLabels.Candidates(c, store.Rwr, id => store.Find(id)?.Unit, GridToTrue).Select(k => $"{k.Label}({k.Receivers}rx,{k.Off:0}°)")));
+        return $"rwr: {LineLabel(u)} ({u.Type}) hears {best.Emitters.Count}: "
+            + string.Join(", ", best.Emitters.Select(x => $"{x.Label}/{x.Category} grid {x.Bearing:000} {x.Mode} lvl {x.Level:0.00}"))
+            + $"; grid→true {GridToTrue(lat, lon):+0.0;-0.0}°, line {brg:000}° ±{e.Err:0}°"
+            + $"\nids: mode {store.IdentificationMode}, {store.Identities.Count} identified\n" + string.Join("\n", contacts)
+            + "\n" + scopeState;
+    }
+
     /// <summary>Snapshot aid: three bearing lines from an own aircraft's track towards a made-up
     /// emitter 35 NM off its right wing (2–4° of RWR error), the fix, an SA-6 placed at it (sent
     /// as an F10 mark when <paramref name="send"/>), and the RWR clock open on the aircraft.</summary>
@@ -760,7 +1189,7 @@ public partial class MapPanel : UserControl
         for (int i = 0; i < origins.Length; i++)
         {
             var brg = Core.Nav.BearingRange(origins[i].Item1, origins[i].Item2, eLat, eLon).TrueDeg + errors[i];
-            board.AddLine(trackId, LineLabel(u), origins[i].Item1, origins[i].Item2, brg - clocks[i] * 30, clocks[i], DateTime.UtcNow.AddMinutes(-6 + 3 * i));
+            board.AddLine(trackId, LineLabel(u), origins[i].Item1, origins[i].Item2, brg, DateTime.UtcNow.AddMinutes(-6 + 3 * i));
         }
         var report = $"gci: emitter {eLat:F4},{eLon:F4}";
         if (board.Fixes().FirstOrDefault(f => f.TrackId == trackId).Fix is { } fix)
@@ -776,7 +1205,7 @@ public partial class MapPanel : UserControl
         else report += "; no fix";
         ShowAt((lat + eLat) / 2, (lon + eLon) / 2, 70 * Core.Nav.MetersPerNm * Mercator.ScaleAt(lat) / Math.Max(300, Math.Min(Nav.Width, Nav.Height)));
         await Task.Delay(500);
-        OpenRwrClock(trackId);
+        OpenRwrScope(trackId);
         return report;
     }
 

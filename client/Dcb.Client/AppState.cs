@@ -86,6 +86,17 @@ public static class AppState
         return opened;
     }
 
+    /// <summary>The NCTR key was pressed: the map under the pointer starts its area selection.</summary>
+    public static event Func<bool>? NctrRequested;
+
+    public static bool RequestNctr()
+    {
+        if (NctrRequested is not { } handlers) return false;
+        var started = false;
+        foreach (var h in handlers.GetInvocationList().Cast<Func<bool>>()) started |= h();
+        return started;
+    }
+
     /// <summary>An Alt+click happened while Alt was down: its release must not open the menu bar.</summary>
     public static bool AltClicked { get; set; }
 

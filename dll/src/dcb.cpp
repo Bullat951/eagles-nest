@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.7.0";  // 0.3: controller commands; 0.4: coalition channels (LSO feed); 0.5: analytics ids; 0.6: F10 mark commands; 0.7: carrier lights
+constexpr char kVersion[] = "0.8.0";  // 0.3: controller commands; 0.4: coalition channels (LSO feed); 0.5: analytics ids; 0.6: F10 mark commands; 0.7: carrier lights; 0.8: identify, shared threats, nctr
 dcb::NetServer g_server;
 dcb::TerrainGrid g_terrain;
 
@@ -167,6 +167,10 @@ int l_commands(lua_State* L) {
         lua_setfield(L, -2, "mark");
         lua_pushinteger(L, c.mode);
         lua_setfield(L, -2, "mode");
+        lua_pushinteger(L, static_cast<lua_Integer>(c.x2));
+        lua_setfield(L, -2, "x2");
+        lua_pushinteger(L, static_cast<lua_Integer>(c.z2));
+        lua_setfield(L, -2, "z2");
         lua_rawseti(L, -2, static_cast<int>(i + 1));
     }
     return 1;

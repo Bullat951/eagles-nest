@@ -47,6 +47,17 @@ public class TheatreTests
     }
 
     [Fact]
+    public void Grid_north_is_where_x_points()
+    {
+        Assert.Equal(0, Make().GridNorthAt(41, 31), 6);
+        // Lon also rises with x: grid north leans east of true north.
+        var skewed = new Theatre("Test", 0, 0, 2000, 2000,
+            new GeoGrid(3, [40, 40, 40, 41, 41, 41, 42, 42, 42], [30, 31, 32, 30.1, 31.1, 32.1, 30.2, 31.2, 32.2]), []);
+        var expected = Math.Atan2(0.1 * Math.Cos(41 * Math.PI / 180), 1) * 180 / Math.PI;
+        Assert.Equal(expected, skewed.GridNorthAt(41, 31.1), 1);
+    }
+
+    [Fact]
     public void Border_walks_four_edges()
     {
         var border = Make().Border(pointsPerEdge: 4);

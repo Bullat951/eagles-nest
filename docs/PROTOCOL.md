@@ -20,6 +20,10 @@ website: all mission information does, **except units** (positions, tracks, pict
 | `weather` | server → client | public | yes | every 60 s |
 | `lso` | server → client | coalition | **no** (units) | 10 a second while own aircraft are within 10 NM of an own carrier |
 | `marks` | server → client | coalition | no | after login, then when the coalition's F10 marks change (checked every 5 s) |
+| `rwr` | server → client | coalition | **no** (units) | every `interval` (1 s) (`rwr = true`) |
+| `ids` | server → client | coalition | no | after login, then when the coalition's identities change (checked every 10 s) |
+| `threats` | server → client | coalition | no | after login, then when a controller adds or removes a shared threat |
+| `nctr` | server → client | coalition | no | when the coalition's NCTR requests change (every second while one runs) |
 | `command` | client → server | — | no | when a controller acts (rate-limited) |
 | `command_result` | server → client | that client | no | answer to each `command` |
 
@@ -54,6 +58,25 @@ type DCB knows, of the controller's own coalition (`not a ship of your coalition
 gone)`, `not a carrier`). Verified in multiplayer on CVN-72 and Stennis (RESEARCH-LIGHTS.md).
 DCS does not report a carrier's current mode.
 
+`{"type":"command","id":11,"name":"identify","unit":1002192,"label":"50"}` (DLL 0.8) — an identity
+for a radar contact, shared with the controller's coalition (`ids` channel). `unit`: an existing
+unit of the enemy coalition (`not an enemy unit (or it is gone)`); `label`: ≤ 24 letters, digits,
+`-`, `/`, spaces — an RWR label ("29", "6") or a name ("Su-34", "SA-11"); empty clears it. Kept
+by the hook per coalition until the unit is gone or the mission changes.
+
+`{"type":"command","id":12,"name":"threat_add","x":-280000,"z":640000,"threat":"SA-11"}` (DLL 0.8)
+— a threat shared with the controller's coalition's controllers only (`threats` channel; not an
+F10 mark, pilots do not see it). `x`, `z`: DCS metres (±2 000 km); `threat`: ≤ 24 letters,
+digits, `-`, `/`, spaces. Result `"value":"1"`: its id. At most 200 per coalition; gone with the
+mission. `{"type":"command","id":13,"name":"threat_remove","threat_id":1}` — any controller of
+that coalition removes it (`no such threat of your coalition`).
+
+`{"type":"command","id":14,"name":"nctr","x":-300000,"z":600000,"x2":-250000,"z2":680000,"methods":"jem,size"}`
+(DLL 0.8) — NCTR on the contacts the coalition holds inside the box (two corners, DCS metres, at
+most 400 km a side) with the methods named (`jem`, `hrrp`, `isar`, `size`, `rotor`, `raid`; lower case,
+commas). Result `"value":"3"`: the request id; refused with `no contacts in the area`, `three
+NCTR requests already running`, `no known method …`. Rules in RESEARCH-IDENTIFICATION.md phase 4.
+
 Answer to the same client: `{"type":"command_result","id":7,"ok":true}` (with `"value"` when
 the command returns one) or
 `{"type":"command_result","id":7,"ok":false,"error":"no player in that aircraft"}`. Errors
@@ -87,6 +110,52 @@ draw arguments 0 and 25, null when the model has none (25 is not the hook on eve
 Sent 10 times a second only while such aircraft exist; the aircraft list is refreshed with each
 picture. The DLL keeps it in its own per-side slot (`publish_side`), so it never displaces the
 picture. Coalition-private, not exported.
+
+## rwr (coalition)
+`{"type":"rwr","version":1,"coalition":"blue","time":<mission s>,"receivers":[{"id":<own unit id>,
+"emitters":[{"key","label","cat","bearing","err","mode","level"}]}]}` — what each own receiver
+hears (identification layer 1, RESEARCH-IDENTIFICATION.md), computed on the server for AI and
+players alike. Receivers: own aircraft with an RWR, own ships and ground units with a radar
+(ESM). An enemy radar that is on is heard within 1.5× its radar's detection range (DCS sensor
+data; by category when it has none), inside its scan sector (fighters ±60°, helicopters ±90°,
+AWACS, ships and ground all round) and with line of sight (`land.isVisible`, kept 4–6 s per
+pair). `key`: the same for one emitter across updates and receivers, **not** its unit id;
+`label`: RWR-style symbol from the emitter's type ("29", "50", "6", "SH", "S" search radar,
+"U" unknown); `cat`: airplane, helicopter, ground, ship; `bearing`: degrees from grid north
+(like the picture's headings) from the receiver, off by a bias within ±`err` that changes with
+each line-of-sight refresh (`err` 5° ships/ground, 10° aircraft, 15° helicopters); `mode`:
+`search`, `track` (the emitter's radar tracks this receiver) or `launch` (a missile from the
+emitter's unit or group is aimed at this receiver); `level` 0..1, rising as the emitter gets
+closer. Receivers that hear nothing are left out (an empty list when none hears anything). Own
+channel per side (`publish_side`), coalition-private, not exported. The hook logs
+`timing: rwr …` and `rwr: … receivers, pairs, in range, LOS calls` once a minute.
+
+## nctr (coalition)
+`{"type":"nctr","coalition":"red","requests":[{"id":1,"state":"running|done","time":<mission s>,
+"left":<s>,"area":[x1,z1,x2,z2],"methods":["jem","size"],"radars":<platforms taking part>,
+"cones":[{"platform":"<own unit name>","x","z","center":<grid deg>,"half":<deg>,"range":<m>}],
+"results":[{"unit":<contact id>,"method":"jem","status":"pending|ok|none","active":<bool>,"result":"F-16
+(F100/F110)"|null,"reason":"range 61 NM (max 40)"|null,"platform":"<own unit name>"|null}]}]}` —
+the coalition's NCTR requests, running or done in the last 120 s, one result per contact and
+method. JEM answers the engine family, HRRP / ISAR / rotor the DCS type, size `small | medium |
+large`, raid the aircraft in the contact's return (`single aircraft`, `2 aircraft`, …); `reason` says why a method failed (or, while pending, why it is not working yet). While a
+request runs, each radar taking part looks along its cone (covering the targets it holds, ≤ 30°;
+`cones`, running requests only); contacts that only such radars hold and that lie outside all
+their cones carry `"frozen":true` in the picture (their last position). Sent when the line changes.
+
+## threats (coalition)
+`{"type":"threats","coalition":"blue","threats":[{"id":1,"x":-280000,"z":640000,"threat":"SA-11","time":<mission s>}]}`
+— every threat the coalition's controllers share (`threat_add`), DCS metres. Sent after login
+and whenever one is added or removed. Bearing lines are not shared (each controller's own).
+
+## ids (coalition)
+`{"type":"ids","coalition":"blue","mode":"manual","ids":[{"unit":1002192,"label":"50","time":<mission s>}]}`
+— the contacts the coalition's controllers identified (`identify`), and the server's
+`identification` setting: `"manual"` (contacts in the picture never carry `type`; only these
+identities name them) or `"auto"` (a contact carries its DCS type once DCS identifies it).
+Sent after login and whenever an identity is set, cleared, or its unit is gone (checked every
+10 s). Clients show the label where the type would be; an identity of a ground unit or ship
+that names a SAM ("6", "SA-11") gives it that threat ring.
 
 ## auth
 `{"type":"auth","password":"…","client":"DCB Client 0.1"}`. The password decides the
