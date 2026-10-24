@@ -189,6 +189,8 @@ public partial class MapPanel : UserControl
     private void OnAirfieldSelectionChanged()
     {
         _airfields.SelectedId = AppState.SelectedAirfieldId;
+        // Approach range marks belong to ATC: an ATC window or the ATC tab's own map.
+        _airfields.ShowApproaches = IsAirfieldView || Workspace?.Preset == MainWindow.AtcPreset;
         _airfields.Invalidate();
     }
 

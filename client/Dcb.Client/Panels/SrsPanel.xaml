@@ -16,7 +16,25 @@
             <GroupBox Header="Your radio position (SRS range and line of sight)" Padding="6" Margin="0,8,0,0">
                 <StackPanel>
                     <!-- One group: the two sit in different panels, which would make them independent. -->
-                    <RadioButton x:Name="PositionAtc" GroupName="Position" Content="The airfield picked in the ATC tab" Checked="Position_Checked"/>
+                    <RadioButton x:Name="PositionAtc" GroupName="Position" Content="From the list: airfield, carrier or AWACS" Checked="Position_Checked"/>
+                    <!-- Airfields, helipads, own carriers and own AWACS: picking one puts your radio there
+                         (a carrier or AWACS is followed as it moves, an AWACS at its altitude). -->
+                    <DockPanel Margin="18,3,0,0">
+                        <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,3">
+                            <CheckBox x:Name="ShowFields" Content="Airfields" IsChecked="True" Margin="0,0,6,2" Click="AirfieldFilter_Click"/>
+                            <CheckBox x:Name="ShowHelipads" Content="Helipads" IsChecked="False" Margin="0,0,6,2" Click="AirfieldFilter_Click"/>
+                            <CheckBox x:Name="ShowCarriers" Content="Carriers" IsChecked="True" Margin="0,0,6,2" Click="AirfieldFilter_Click"/>
+                            <CheckBox x:Name="ShowAwacs" Content="AWACS" IsChecked="True" Margin="0,0,12,2" Click="AirfieldFilter_Click"/>
+                            <CheckBox x:Name="ShowBlue" Content="Blue" IsChecked="True" Margin="0,0,6,2" Click="AirfieldFilter_Click"/>
+                            <CheckBox x:Name="ShowRed" Content="Red" IsChecked="True" Margin="0,0,6,2" Click="AirfieldFilter_Click"/>
+                            <CheckBox x:Name="ShowNeutral" Content="Neutral" IsChecked="True" Margin="0,0,6,2" Click="AirfieldFilter_Click"/>
+                        </WrapPanel>
+                        <DockPanel DockPanel.Dock="Top">
+                            <TextBlock Text="Find" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBox x:Name="AirfieldFind" TextChanged="AirfieldFind_Changed" ToolTip="Part of the name or callsign"/>
+                        </DockPanel>
+                        <ListBox x:Name="AirfieldList" Height="170" Margin="0,3,0,0" SelectionChanged="AirfieldList_SelectionChanged"/>
+                    </DockPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                         <RadioButton x:Name="PositionFixed" GroupName="Position" Content="Fixed point" VerticalAlignment="Center" Checked="Position_Checked"/>
                         <TextBlock x:Name="FixedText" VerticalAlignment="Center" Margin="8,0" Foreground="{DynamicResource Dcb.TextDim}"/>

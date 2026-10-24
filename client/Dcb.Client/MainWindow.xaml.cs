@@ -151,7 +151,11 @@ public partial class MainWindow : Window
                 // Unknown ids get no content and are dropped by the serializer's default handling.
                 serializer.LayoutSerializationCallback += (_, e) => e.Content = CreateContent(e.Model.ContentId);
                 serializer.Deserialize(path);
-                if (Dock.Layout.Descendents().OfType<LayoutContent>().Any()) return;
+                if (Dock.Layout.Descendents().OfType<LayoutContent>().Any())
+                {
+                    if (Preset != AtcPreset) FitGciLayout();
+                    return;
+                }
             }
             catch (Exception)
             {
@@ -173,6 +177,18 @@ public partial class MainWindow : Window
         _ => null,
     };
 
+    /// <summary>GCI windows (all but ATC) need no ATC tab, but the airfield list for the SRS
+    /// position, which the SRS tab has: a saved layout loses its ATC tab and gains SRS if missing.</summary>
+    private void FitGciLayout()
+    {
+        foreach (var atc in Dock.Layout.Descendents().OfType<LayoutAnchorable>().Where(a => a.ContentId == AtcId).ToList())
+            atc.Parent?.RemoveChild(atc);
+        if (Dock.Layout.Descendents().OfType<LayoutAnchorable>().Any(a => a.ContentId == SrsId)) return;
+        var pane = Dock.Layout.Descendents().OfType<LayoutAnchorablePane>().FirstOrDefault(p => p.Children.Any(c => c.ContentId == ObjectsId))
+                   ?? Dock.Layout.Descendents().OfType<LayoutAnchorablePane>().FirstOrDefault();
+        if (pane is not null) pane.Children.Add(Anchorable(SrsId, "SRS"));
+    }
+
     private void BuildDefaultLayout()
     {
         switch (Preset)
@@ -191,27 +207,16 @@ public partial class MainWindow : Window
                 Dock.Layout.RootPanel.Children.Add(map);
                 break;
             }
-            case GciPreset:
-            {
-                // A large map with the track and zone lists beside it.
-                var documents = new LayoutDocumentPane(MapDocument(null, 1));
-                var lists = new LayoutAnchorablePane(Anchorable(ObjectsId, "Objects"));
-                lists.Children.Add(Anchorable(ZonesId, "Zones"));
-                lists.Children.Add(Anchorable(PackagesId, "Packages"));
-                var side = new LayoutAnchorablePaneGroup(lists) { DockWidth = new GridLength(380) };
-                Dock.Layout = new LayoutRoot { RootPanel = new LayoutPanel(new LayoutDocumentPaneGroup(documents)) };
-                Dock.Layout.RootPanel.Children.Add(side);
-                break;
-            }
             default:
             {
+                // GCI (the main window and GCI windows): a large map, the track and zone lists, and
+                // SRS under them (its airfield list sets the radio position). No ATC tab: ATC has
+                // its own window.
                 var documents = new LayoutDocumentPane(MapDocument(null, 1));
                 var objects = new LayoutAnchorablePane(Anchorable(ObjectsId, "Objects")) { DockHeight = new GridLength(1, GridUnitType.Star) };
                 objects.Children.Add(Anchorable(ZonesId, "Zones"));
                 objects.Children.Add(Anchorable(PackagesId, "Packages"));
-                // ATC holds its own airfield map: give it the larger share of the side column.
-                var tools = new LayoutAnchorablePane(Anchorable(AtcId, "ATC")) { DockHeight = new GridLength(1.6, GridUnitType.Star) };
-                tools.Children.Add(Anchorable(SrsId, "SRS"));
+                var tools = new LayoutAnchorablePane(Anchorable(SrsId, "SRS")) { DockHeight = new GridLength(1, GridUnitType.Star) };
                 var side = new LayoutAnchorablePaneGroup(objects) { Orientation = System.Windows.Controls.Orientation.Vertical, DockWidth = new GridLength(420) };
                 side.Children.Add(tools);
                 Dock.Layout = new LayoutRoot { RootPanel = new LayoutPanel(new LayoutDocumentPaneGroup(documents)) };

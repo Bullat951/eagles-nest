@@ -48,10 +48,12 @@ and contacts you see.
 | **Objects** | every unit you see, filterable (Air / Ground / Ships, Own / Contacts, Players only); click to select, double-click to centre |
 | **Zones** | Foothold campaign zones, owners and strength (Foothold missions only) |
 | **Packages** | four packages P1–P4: name, frequency, members |
-| **ATC** | airfields and carriers, diagram, approach, carrier and LSO views, runway queue |
-| **SRS** | your radios, who is on which frequency, who is talking |
+| **ATC** | airfields and carriers, diagram, approach, carrier and LSO views, runway queue — in ATC windows (*Window → New window → ATC*), or on demand with *Window → ATC* |
+| **SRS** | your radios, who is on which frequency, who is talking, and the list (airfields, carriers, AWACS) that sets where your radio stands |
 
-Panels can be docked, tabbed, floated and moved to another screen.
+The main window and GCI windows are for GCI: no ATC tab, and the selected airfield gets no
+approach range marks (those belong to ATC windows). Panels can be docked, tabbed, floated and
+moved to another screen.
 
 ## 3. Maps
 
@@ -232,8 +234,12 @@ Pick a carrier in the ATC list.
 Eagle's Nest works with the SRS client on your PC the way other controller tools do. Connect
 your SRS client in **External AWACS Mode**.
 
-- **Your radio position**: the ATC airfield or a fixed point, so SRS range and line of sight
-  work for you; line-of-sight questions from SRS are answered from the terrain.
+- **Your radio position**, so SRS range and line of sight work for you: pick a place in the SRS
+  tab's list — an airfield or helipad, or one of your **carriers** or **AWACS** (followed as it
+  moves; an AWACS at its altitude, so you hear as far as it would) — or a fixed point. Filters
+  above the list: Airfields, Helipads, Carriers, AWACS, and Blue / Red / Neutral; *Find* searches
+  names and callsigns. Picking an airfield in the ATC tab works too. Line-of-sight questions from
+  SRS are answered from the terrain.
 - **Tuning**: type a frequency or use the airfield's tower frequencies. Channel plan: CH6 = ATC,
   CH7–CH10 = packages P1–P4 (set from the Packages panel), CH1–5 free.
 - **Listen**: Eagle's Nest can also join the SRS server itself, receive-only (others see

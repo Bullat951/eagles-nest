@@ -55,6 +55,13 @@ public sealed class SrsBridge
                 var (lat, lon) = theatre.ToLatLon(field.X, field.Z);
                 return (lat, lon, Ground(field.X, field.Z), field.Name);
             }
+            case SrsPosition.Unit when Settings.PositionUnit is { } name
+                && store.Tracks.FirstOrDefault(t => !t.Unit.Detected && t.Unit.Name == name)?.Unit is { Lat: { } ulat, Lon: { } ulon } unit:
+            {
+                // On the carrier or AWACS, at its own altitude (an AWACS sees far).
+                var (ux, uz) = theatre.FromLatLon(ulat, ulon);
+                return (ulat, ulon, Math.Max(unit.Alt ?? 0, Ground(ux, uz)), Symbology.NameOf(unit) ?? name);
+            }
             case SrsPosition.Fixed when Settings.FixedLat is { } lat && Settings.FixedLon is { } lon:
             {
                 var (x, z) = theatre.FromLatLon(lat, lon);
@@ -75,7 +82,8 @@ public sealed class SrsBridge
             PositionStatus = Settings.Position switch
             {
                 SrsPosition.Off => "Position: off (SRS uses no position for you)",
-                SrsPosition.AtcAirfield => "Position: pick an airfield in the ATC tab",
+                SrsPosition.AtcAirfield => "Position: pick an airfield (SRS tab list or ATC tab)",
+                SrsPosition.Unit => $"Position: {Settings.PositionUnit} is not in the picture",
                 _ => "Position: set the fixed point (Set to map centre)",
             };
             return;

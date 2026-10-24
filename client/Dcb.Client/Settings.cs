@@ -27,7 +27,9 @@ public sealed class BaseMapConverter : System.Text.Json.Serialization.JsonConver
 }
 
 /// <summary>Where the controller's radio stands for SRS range and line of sight.</summary>
-public enum SrsPosition { Off, AtcAirfield, Fixed }
+/// <summary>Where the controller's radio stands for SRS: an airfield, a fixed point, or an own
+/// carrier or AWACS (followed as it moves, at its altitude; <see cref="SrsSettings.PositionUnit"/>).</summary>
+public enum SrsPosition { Off, AtcAirfield, Fixed, Unit }
 
 /// <summary>The bridge to the controller's own SRS client (docs/PLAN.md, phase 5a). Ports are
 /// SRS's defaults for controller tools.</summary>
@@ -36,6 +38,8 @@ public sealed class SrsSettings
     public SrsPosition Position { get; set; } = SrsPosition.AtcAirfield;
     public double? FixedLat { get; set; }
     public double? FixedLon { get; set; }
+    /// <summary>The own carrier or AWACS the radio stands on (unit name: survives reconnects).</summary>
+    public string? PositionUnit { get; set; }
     /// <summary>Also make a tuned radio the one that transmits, when the caller does not say.</summary>
     public bool SelectOnTune { get; set; }
     public int PositionPort { get; set; } = 10710;

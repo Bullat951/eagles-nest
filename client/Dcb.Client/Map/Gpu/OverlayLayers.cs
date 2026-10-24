@@ -208,6 +208,8 @@ public sealed class AirfieldsSk : MapLayer
     public bool FullDetail { get; set; }
     public SKColor Halo { get; set; } = SkPalette.HaloDark;
     public int? SelectedId { get; set; }
+    /// <summary>The selected airfield's approach range marks: ATC windows only (MapPanel).</summary>
+    public bool ShowApproaches { get; set; } = true;
     public bool ShowDiagrams { get; set; } = true;
     public bool NightDiagrams { get; set; }
 
@@ -223,7 +225,7 @@ public sealed class AirfieldsSk : MapLayer
         var store = AppState.Store;
         if (store.Theatre is not { } theatre || store.Airfields.Count == 0) return;
         var upd = view.UnitsPerDip;
-        if (!FullDetail && upd <= ApproachMaxUnitsPerDip && store.Airfields.FirstOrDefault(f => f.Id == SelectedId) is { } selected)
+        if (ShowApproaches && !FullDetail && upd <= ApproachMaxUnitsPerDip && store.Airfields.FirstOrDefault(f => f.Id == SelectedId) is { } selected)
             foreach (var rw in selected.Runways) DrawApproaches(canvas, view, theatre, rw);
         if (upd > OverviewMaxUnitsPerDip) return;
 
