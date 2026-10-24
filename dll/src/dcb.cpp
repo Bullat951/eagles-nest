@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr char kVersion[] = "0.8.0";  // 0.3: controller commands; 0.4: coalition channels (LSO feed); 0.5: analytics ids; 0.6: F10 mark commands; 0.7: carrier lights; 0.8: identify, shared threats, nctr
+constexpr char kVersion[] = "0.8.1";  // 0.3: controller commands; 0.4: coalition channels (LSO feed); 0.5: analytics ids; 0.6: F10 mark commands; 0.7: carrier lights; 0.8: identify, shared threats, nctr
 dcb::NetServer g_server;
 dcb::TerrainGrid g_terrain;
 
